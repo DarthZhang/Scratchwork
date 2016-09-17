@@ -1,8 +1,8 @@
 # MIMIC-III
 
 This folder includes my MIMIC III Codes.
-Preliminary data visualization, table summaries can be found in PRELIM folder.
-CHF folder contains studies one for CHF readmission patients. 
+Preliminary data, visualization, and table summaries can be found in PRELIM folder.
+CHF folder contains analysis for CHF readmission patients. 
 SQL folder contains SQL code for linux environment.
 
-<i>Let us move the World from Batesian Mimicry to Bayesian MIMIC-III.</i>
+<i>Let us move the world from Batesian Mimicry to Bayesian MIMIC-III.</i>
