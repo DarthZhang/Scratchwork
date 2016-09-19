@@ -1,82 +1,71 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sat Sep 17 05:51:50 2016
+Created on Thu Sep 15 23:22:39 2016
 
 @author: Andy
 """
 
-import sqlite3
 import csv
+import numpy as np
+
 import pandas as pd
 from pandas import DataFrame
-import numpy as np
-import matplotlib as plt
 
-conn = sqlite3.connect('mimic.db')
-c = conn.cursor()
+import datetime
 
-def create_tables():
-    ## create tables ##
-    c.execute('DROP TABLE IF EXISTS admissions')
-    c.execute('DROP TABLE IF EXISTS diagnoses')
-    c.execute('DROP TABLE IF EXISTS icds')
-    c.execute('DROP TABLE IF EXISTS labitems')
-    c.execute('CREATE TABLE IF NOT EXISTS admissions(ROW_ID INT, SUBJECT_ID INT, HADM_ID INT, ADMITTIME TIMESTAMP, DISCHTIME TIMESTAMP, DEATHTIME TIMESTAMP, ADMISSION_TYPE TEXT, ADMISSION_LOCATION TEXT, DISCHARGE_LOCATION TEXT, INSURANCE TEXT, LANGUAGE TEXT, RELIGION TEXT, MARITAL_STATUS TEXT, ETHNICITY TEXT, EDREGTIME TIMESTAMP, EDOUTTIME TIMESTAMP, DIAGNOSIS TEXT, HOSPITAL_EXPIRE_FLAG INT, HAS_IOEVENTS_DATA INT, HAS_CHARTEVENTS_DATA INT);')    
-    #c.execute('CREATE TABLE IF NOT EXISTS chartevents')
-    #c.execute('CREATE TABLE IF NOT EXISTS labevents')
-    c.execute('CREATE TABLE IF NOT EXISTS diagnoses(ROW_ID INT, SUBJECT_ID INT, HADM_ID INT, SEQ_NUM INT, ICD9_CODE TEXT);')
-    c.execute('CREATE TABLE IF NOT EXISTS icds(ROW_ID INT, ICD9_CODE TEXT, SHORT_TITLE TEXT, LONG_TITLE TEXT);')
-    #c.execute('CREATE TABLE IF NOT EXISTS inputevents')
-    #c.execute('CREATE TABLE IF NOT EXISTS outputevents')
-    #c.execute('CREATE TABLE IF NOT EXISTS procedures')
-    c.execute('CREATE TABLE IF NOT EXISTS labitems(ROW_ID INT, SUBJECT_ID INT, HADM_ID INT, ITEMID INT, CHARTTIME TIMESTAMP, VALUE TEXT, VALUENUM REAL, VALUEUOM TEXT, FLAG TEXT);')
-    #c.execute('CREATE TABLE IF NOT EXISTS items')
-    #c.execute('CREATE TABLE IF NOT EXISTS procedureevents')
-    
-    ##import admissions table
-    with open('C:/Users/Andy/Desktop/mimic/csv/ADMISSIONS.csv/ADMISSIONS_DATA_TABLE.csv','r') as f:
-        dr = csv.DictReader(f) #first line is read as header. ',' is delimiter.
-        #to_db = [(i['c1'], i['c2'], i['c3'], i['c4'], i['c5'], i['c6'], i['c7'], i['c8'], i['c9'], i['c10'], i['c11'], i['c12'], i['c13'], i['c14'], i['c15'], i['c16'], i['c17'], i['c18'], i['c19'], i['c20']) for i in dr]
-        to_db = [(i['ROW_ID'], i['SUBJECT_ID'], i['HADM_ID'], i['ADMITTIME'], i['DISCHTIME'], i['DEATHTIME'], i['ADMISSION_TYPE'], i['ADMISSION_LOCATION'], i['DISCHARGE_LOCATION'], i['INSURANCE'], i['LANGUAGE'], i['RELIGION'], i['MARITAL_STATUS'], i['ETHNICITY'], i['EDREGTIME'], i['EDOUTTIME'], i['DIAGNOSIS'], i['HOSPITAL_EXPIRE_FLAG'], i['HAS_IOEVENTS_DATA'], i['HAS_CHARTEVENTS_DATA']) for i in dr]
-    c.executemany("INSERT INTO admissions(ROW_ID, SUBJECT_ID, HADM_ID, ADMITTIME, DISCHTIME, DEATHTIME, ADMISSION_TYPE, ADMISSION_LOCATION, DISCHARGE_LOCATION, INSURANCE, LANGUAGE, RELIGION, MARITAL_STATUS, ETHNICITY, EDREGTIME, EDOUTTIME, DIAGNOSIS, HOSPITAL_EXPIRE_FLAG, HAS_IOEVENTS_DATA, HAS_CHARTEVENTS_DATA) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", to_db)
-    conn.commit()
-    
-    #import diagnoses table
-    with open('C:/Users/Andy/Desktop/mimic/csv/DIAGNOSES_ICD.csv/DIAGNOSES_ICD_DATA_TABLE.csv','r') as f:
-        dr = csv.DictReader(f) #first line is read as header. ',' is delimiter.
-        #to_db = [(i['c1'], i['c2'], i['c3'], i['c4'], i['c5'], i['c6'], i['c7'], i['c8'], i['c9'], i['c10'], i['c11'], i['c12'], i['c13'], i['c14'], i['c15'], i['c16'], i['c17'], i['c18'], i['c19'], i['c20']) for i in dr]
-        to_db = [(i['ROW_ID'], i['SUBJECT_ID'], i['HADM_ID'], i['SEQ_NUM'], i['ICD9_CODE']) for i in dr]
-    c.executemany("INSERT INTO diagnoses(ROW_ID, SUBJECT_ID, HADM_ID, SEQ_NUM, ICD9_CODE) VALUES (?, ?, ?, ?, ?);", to_db)
-    conn.commit()
-    
-    #import icds
-    with open('C:/Users/Andy/Desktop/mimic/csv/DIAGNOSES_ICD.csv/D_ICD_DIAGNOSES_DATA_TABLE.csv','r') as f:
-        dr = csv.DictReader(f) #first line is read as header. ',' is delimiter.
-        to_db = [(i['ROW_ID'], i['ICD9_CODE'], i['SHORT_TITLE'], i['LONG_TITLE']) for i in dr]
-    c.executemany("INSERT INTO icds(ROW_ID, ICD9_CODE, SHORT_TITLE, LONG_TITLE) VALUES (?, ?, ?, ?);", to_db)
-    conn.commit()
-    
-    #import labevents table
-    with open('C:/Users/Andy/Desktop/mimic/csv/LABEVENTS.csv/LABEVENTS_DATA_TABLE.csv','r') as f:
-        dr = csv.DictReader(f) #first line is read as header. ',' is delimiter.
-        to_db = [(i['ROW_ID'], i['SUBJECT_ID'], i['HADM_ID'], i['ITEMID'], i['CHARTTIME'], i['VALUE'], i['VALUENUM'], i['VALUEUOM'], i['FLAG']) for i in dr]
-    c.executemany("INSERT INTO labevents(ROW_ID, SUBJECT_ID, HADM_ID, ITEMID, CHARTTIME, VALUE, VALUENUM, VALUEUOM, FLAG) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);", to_db)
-    conn.commit()
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+
+from collections import Counter
+
+df = pd.read_csv('C:/Users/Andy/Desktop/mimic/csv/DIAGNOSES_ICD.csv/DIAGNOSES_ICD_DATA_TABLE.csv')
+key = pd.read_csv('C:/Users/Andy/Desktop/mimic/csv/DIAGNOSES_ICD.csv/D_ICD_DIAGNOSES_DATA_TABLE.csv')
+
+CHF = ['40201', '40211', '40291', '40401', '40403', '40411', '40413', '40491', '40493', '428.0', '4280', '428', '428.1','4281', '42820', '42822', '42830', '42832', '42840', '42842', '4289', '428.9']
 
 
-def data_entry():
-    c.execute ('INSERT INTO t VALUES (x, y, z)')
-    conn.commit()
+#OK. Here's the plan:
+#[1] Make a list of all the ICD9 CHF codes (there are many).
+#[2] Use keys to search for them.
+#[3] Make a filtered table from df using keys from keys
+#key[key['ICD9_CODE'].isin(CHF)]
 
-def read_from_db():
-    CHF = ['40201', '40211', '40291', '40401', '40403', '40411', '40413', '40491', '40493', '428.0', '4280', '428', '428.1','4281', '42820', '42822', '42830', '42832', '42840', '42842', '4289', '428.9']
-    sql = "SELECT * FROM diagnoses WHERE ICD9_CODE in ({seq})".format(seq=','.join(['?']*len(CHF)))
-    c.execute(sql, CHF)
-    data = c.fetchall()
-    #[print (row) for row in data]
+#[4] ID patients who have CHF codes, split into multiple CHF admission vs. singular CHF admission.
+patients = df[df['ICD9_CODE'].isin(CHF)]
+#subject_IDs =patients["SUBJECT_ID"].unique() #unique patients with CHF
+subjects = dict(Counter(patients["SUBJECT_ID"])) #creates Counter for each subjects 
+readm = {i:j for (i,j) in subjects.items() if j>1}      #filter patients with multiple admissions for CHF
+no_re = {i:j for (i,j) in subjects.items() if j==1}     #filter patients with only one admission for CHF
+
+#[5] now split re-admit CHF patients into 180 day window 
+admissions =  pd.read_csv('C:/Users/Andy/Desktop/mimic/csv/ADMISSIONS.csv/ADMISSIONS_DATA_TABLE.csv')
+readm = admissions[admissions['SUBJECT_ID'].isin(readm.keys())]
+
+#[6] now split no re-admit CHF patients into those who those who deceased vs. those discharged (not deceased).
+no_re = admissions[admissions['SUBJECT_ID'].isin(no_re.keys())]
+deceased = no_re[no_re['HOSPITAL_EXPIRE_FLAG'] == 1]
+deceased = dict(Counter(deceased['SUBJECT_ID']))            #deceased patients on single admission for CHF
+discharged = no_re[no_re['HOSPITAL_EXPIRE_FLAG'] == 0]
+discharged = dict(Counter(discharged['SUBJECT_ID']))        #patients discharged with only one admission for CHF
 
 
-create_tables()
-read_from_db()
-c.close()
-conn.close()
+
+############
+#To select for these CHF patients in labevents, we first need  to buffer LABEVENTS
+header = ["ROW_ID", "SUBJECT_ID", "HADM_ID", "ITEMID", "CHARTTIME", "VALUE", "VALUENUM", "VALUEUOM", "FLAG"]
+count =0
+#output = open("C:/Users/Andy/Desktop/mimic/csv/CHF ANALYSIS/CHF.csv",'a')
+with open ("C:/Users/Andy/Desktop/mimic/csv/LABEVENTS.csv/LABEVENTS_DATA_TABLE.csv", buffering = 20000000) as f:
+    for line in f:
+        if count ==0:
+            dflabs = pd.DataFrame(columns=header)
+        else:
+            data = [i.strip() for i in line.split(',')] #converts line (str) into list
+            if int(data[1]) in readm.keys(): #checks if 'SUBJECT_ID' part of the input data is part of CHF population
+                temp = dict(zip(header,data)) #makes data into a dictionary
+                temp = pd.Series(temp) #converts data into Series
+                dflabs=dflabs.append(temp, ignore_index=True) #adds Series data into dflabs, match by index = header
+        count+=1
+        
+#output.close()
+
