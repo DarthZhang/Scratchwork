@@ -28,16 +28,15 @@ CHF = ['40201', '40211', '40291', '40401', '40403', '40411', '40413', '40491', '
 #[1] Make a list of all the ICD9 CHF codes (there are many).
 #[2] Use keys to search for them.
 #[3] Make a filtered table from df using keys from keys
-#key[key['ICD9_CODE'].isin(CHF)]
+
 
 #[4] ID patients who have CHF codes, split into multiple CHF admission vs. singular CHF admission.
 patients = df[df['ICD9_CODE'].isin(CHF)]
-#subject_IDs =patients["SUBJECT_ID"].unique() #unique patients with CHF
 subjects = dict(Counter(patients["SUBJECT_ID"])) #creates Counter for each subjects 
 readm = {i:j for (i,j) in subjects.items() if j>1}      #filter patients with multiple admissions for CHF
 no_re = {i:j for (i,j) in subjects.items() if j==1}     #filter patients with only one admission for CHF
 
-#[5] now split re-admit CHF patients into 180 day window 
+#[5] now split re-admit CHF patients into 180 day window (incomplete)
 admissions =  pd.read_csv('C:/Users/Andy/Desktop/mimic/csv/ADMISSIONS.csv/ADMISSIONS_DATA_TABLE.csv')
 readm = admissions[admissions['SUBJECT_ID'].isin(readm.keys())]
 
