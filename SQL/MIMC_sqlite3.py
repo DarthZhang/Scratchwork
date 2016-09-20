@@ -82,11 +82,10 @@ def read_from_db():
     sql = "SELECT * FROM diagnoses WHERE ICD9_CODE in ({seq}) GROUP BY SUBJECT_ID HAVING COUNT(*)>1".format(seq=','.join(['?']*len(CHF)))
     sql2 = "SELECT * FROM diagnoses WHERE ICD9_CODE in ({seq}) GROUP BY SUBJECT_ID HAVING COUNT(*)==1".format(seq=','.join(['?']*len(CHF)))
     c.execute(sql, CHF)
-    multi_adm = c.fetchall()
-    c.execute(sql2, CHF)
-    one_adm = c.fetchall()
+    multi_adm = c.fetchall()  #this isolates CHF patients with multiple CHF diagnoses
+    c.execute(sql2, CHF) 
+    one_adm = c.fetchall()    #this isolates CHF patients with only one CHF diagnosis  
     #[print (row) for row in data]
-
 
 create_tables()
 #read_from_db()
