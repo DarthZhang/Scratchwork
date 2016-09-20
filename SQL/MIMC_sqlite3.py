@@ -64,9 +64,9 @@ def create_tables():
     conn.commit()
 
 
-def data_entry():
-    c.execute ('INSERT INTO t VALUES (x, y, z)')
-    conn.commit()
+#def data_entry():
+#    c.execute ('INSERT INTO table VALUES (?,?,?)')
+#    conn.commit()
 
 def read_from_db():
     CHF = ['40201', '40211', '40291', '40401', '40403', '40411', '40413', '40491', '40493', '428.0', '4280', '428', '428.1','4281', '42820', '42822', '42830', '42832', '42840', '42842', '4289', '428.9']
