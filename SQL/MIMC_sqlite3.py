@@ -20,18 +20,20 @@ def create_tables():
     c.execute('DROP TABLE IF EXISTS admissions')
     c.execute('DROP TABLE IF EXISTS diagnoses')
     c.execute('DROP TABLE IF EXISTS icds')
+    c.execute('DROP TABLE IF EXISTS labevents')
+    c.execute('DROP TABLE IF EXISTS procedureevents')
     c.execute('DROP TABLE IF EXISTS labitems')
     c.execute('CREATE TABLE IF NOT EXISTS admissions(ROW_ID INT, SUBJECT_ID INT, HADM_ID INT, ADMITTIME TIMESTAMP, DISCHTIME TIMESTAMP, DEATHTIME TIMESTAMP, ADMISSION_TYPE TEXT, ADMISSION_LOCATION TEXT, DISCHARGE_LOCATION TEXT, INSURANCE TEXT, LANGUAGE TEXT, RELIGION TEXT, MARITAL_STATUS TEXT, ETHNICITY TEXT, EDREGTIME TIMESTAMP, EDOUTTIME TIMESTAMP, DIAGNOSIS TEXT, HOSPITAL_EXPIRE_FLAG INT, HAS_IOEVENTS_DATA INT, HAS_CHARTEVENTS_DATA INT);')    
     #c.execute('CREATE TABLE IF NOT EXISTS chartevents')
-    #c.execute('CREATE TABLE IF NOT EXISTS labevents')
+    #c.execute('CREATE TABLE IF NOT EXISTS labitems')
     c.execute('CREATE TABLE IF NOT EXISTS diagnoses(ROW_ID INT, SUBJECT_ID INT, HADM_ID INT, SEQ_NUM INT, ICD9_CODE TEXT);')
     c.execute('CREATE TABLE IF NOT EXISTS icds(ROW_ID INT, ICD9_CODE TEXT, SHORT_TITLE TEXT, LONG_TITLE TEXT);')
     #c.execute('CREATE TABLE IF NOT EXISTS inputevents')
     #c.execute('CREATE TABLE IF NOT EXISTS outputevents')
     #c.execute('CREATE TABLE IF NOT EXISTS procedures')
-    c.execute('CREATE TABLE IF NOT EXISTS labitems(ROW_ID INT, SUBJECT_ID INT, HADM_ID INT, ITEMID INT, CHARTTIME TIMESTAMP, VALUE TEXT, VALUENUM REAL, VALUEUOM TEXT, FLAG TEXT);')
+    c.execute('CREATE TABLE IF NOT EXISTS labevents(ROW_ID INT, SUBJECT_ID INT, HADM_ID INT, ITEMID INT, CHARTTIME TIMESTAMP, VALUE TEXT, VALUENUM REAL, VALUEUOM TEXT, FLAG TEXT);')
     #c.execute('CREATE TABLE IF NOT EXISTS items')
-    #c.execute('CREATE TABLE IF NOT EXISTS procedureevents')
+    c.execute('CREATE TABLE IF NOT EXISTS procedureevents(ROW_ID INT, SUBJECT_ID INT, HADM_ID INT, ICUSTAY_ID INT, STARTTIME TIMESTAMP, ENDTIME TIMESTAMP, ITEMID INT, VALUE REAL, VALUEUOM TEXT, LOCATION TEXT, LOCATIONCATEGORY TEXT, STORETIME TIMESTAMP, CGID INT, ORDERID INT, LINKORDERID INT, ORDERCATEGORYNAME TEXT, SECONDARYORDERCATEGORYNAME TEXT, ORDERCATEGORYDESCRIPTION TEXT, ISOPENBAG INT, CONTINUEINNEXTDEPT INT, CANCELREASON INT, STATUSDESCRIPTION TEXT, COMMENTS_EDITEDBY TEXT, COMMENTS_CANCELEDBY TEXT, COMMENTS_DATE TIMESTAMP);')
     
     ##import admissions table
     with open('C:/Users/Andy/Desktop/mimic/csv/ADMISSIONS.csv/ADMISSIONS_DATA_TABLE.csv','r') as f:
@@ -62,17 +64,27 @@ def create_tables():
         to_db = [(i['ROW_ID'], i['SUBJECT_ID'], i['HADM_ID'], i['ITEMID'], i['CHARTTIME'], i['VALUE'], i['VALUENUM'], i['VALUEUOM'], i['FLAG']) for i in dr]
     c.executemany("INSERT INTO labevents(ROW_ID, SUBJECT_ID, HADM_ID, ITEMID, CHARTTIME, VALUE, VALUENUM, VALUEUOM, FLAG) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);", to_db)
     conn.commit()
+    
+    #import procedure events table
+    with open('C:/Users/Andy/Desktop/mimic/csv/PROCEDURES_ICD.csv/PROCEDUREEVENTS_MV_DATA_TABLE.csv','r') as f:
+        dr = csv.DictReader(f) #first line is read as header. ',' is delimiter.
+        to_db = [(i['ROW_ID'], i['SUBJECT_ID'], i['HADM_ID'], i['ICUSTAY_ID'], i['STARTTIME'], i['ENDTIME'], i['ITEMID'], i['VALUE'], i['VALUEUOM'], i['LOCATION'], i['LOCATIONCATEGORY'], i['STORETIME'], i['CGID'], i['ORDERID'], i['LINKORDERID'], i['ORDERCATEGORYNAME'], i['SECONDARYORDERCATEGORYNAME'], i['ORDERCATEGORYDESCRIPTION'], i['ISOPENBAG'], i['CONTINUEINNEXTDEPT'], i['CANCELREASON'], i['STATUSDESCRIPTION'], i['COMMENTS_EDITEDBY'], i['COMMENTS_CANCELEDBY'], i['COMMENTS_DATE']) for i in dr]
+    c.executemany("INSERT INTO procedureevents(ROW_ID, SUBJECT_ID, HADM_ID, ICUSTAY_ID, STARTTIME, ENDTIME, ITEMID, VALUE, VALUEUOM, LOCATION, LOCATIONCATEGORY, STORETIME, CGID, ORDERID, LINKORDERID, ORDERCATEGORYNAME, SECONDARYORDERCATEGORYNAME, ORDERCATEGORYDESCRIPTION, ISOPENBAG, CONTINUEINNEXTDEPT, CANCELREASON, STATUSDESCRIPTION, COMMENTS_EDITEDBY, COMMENTS_CANCELEDBY, COMMENTS_DATE) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?, ?, ?, ?, ?,?, ?, ?, ?, ?,?, ?, ?, ?, ?);", to_db)
+    conn.commit()
 
 
-#def data_entry():
-#    c.execute ('INSERT INTO table VALUES (?,?,?)')
-#    conn.commit()
+def data_entry():
+    c.execute ('INSERT INTO t VALUES (x, y, z)')
+    conn.commit()
 
 def read_from_db():
     CHF = ['40201', '40211', '40291', '40401', '40403', '40411', '40413', '40491', '40493', '428.0', '4280', '428', '428.1','4281', '42820', '42822', '42830', '42832', '42840', '42842', '4289', '428.9']
-    sql = "SELECT * FROM diagnoses WHERE ICD9_CODE in ({seq})".format(seq=','.join(['?']*len(CHF)))
+    sql = "SELECT * FROM diagnoses WHERE ICD9_CODE in ({seq}) GROUP BY SUBJECT_ID HAVING COUNT(*)>1".format(seq=','.join(['?']*len(CHF)))
+    sql2 = "SELECT * FROM diagnoses WHERE ICD9_CODE in ({seq}) GROUP BY SUBJECT_ID HAVING COUNT(*)==1".format(seq=','.join(['?']*len(CHF)))
     c.execute(sql, CHF)
-    data = c.fetchall()
+    multi_adm = c.fetchall()
+    c.execute(sql2, CHF)
+    one_adm = c.fetchall()
     #[print (row) for row in data]
 
 
