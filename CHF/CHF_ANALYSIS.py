@@ -57,7 +57,7 @@ for subj in mult_adm.keys():
         t2 = t2[t2.index[0]]                #convert into TIMESTAMP
         
         if abs((t1-t2).days) <=180:         #We evaluate the HADM_ID contents in windows of 180 days.
-            if (not df[(df['HADM_ID']==i[1]) & (df['ICD9_CODE'].isin(CHF))].empty) & (not df[(df['HADM_ID']==i[1]) & (df['ICD9_CODE'].isin(CHF))].empty):
+            if (not df[(df['HADM_ID']==i[0]) & (df['ICD9_CODE'].isin(CHF))].empty) & (not df[(df['HADM_ID']==i[1]) & (df['ICD9_CODE'].isin(CHF))].empty):
                 #This was a long statement. It basically checks if HADM_ID's of both readmissions within the 180 day window are CHF-related. 
                 y_positive.append([subj, i[0], i[1]])
 
