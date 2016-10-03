@@ -203,17 +203,14 @@ def make_UFM():
     
     frames = [df1, df2]
     df = pd.concat(frames, keys=['l','p'])
-    
-    return (df)
+    return (df1, df2, df3, df)
     
 def data_entry():
     c.execute ('INSERT INTO t VALUES (x, y, z)')
     conn.commit()
 
 
-create_tables()
-print ("Tables made.")
-make_UFM()
-print ("UFM tables made.")
+#create_tables()
+df1, df2, df3, df = make_UFM()
 c.close()
 conn.close()
