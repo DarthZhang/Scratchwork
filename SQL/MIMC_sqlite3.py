@@ -201,8 +201,32 @@ def make_UFM():
     df3 = pd.concat([dfa, dfb])
     df3['FEATURE'] = 'd_' + df3['FEATURE'].astype(str)
     
-    frames = [df1, df2]
-    df = pd.concat(frames, keys=['l','p'])
+    #append timestamps to df3
+    #first find hadm's for diagnoses, then acquire timestamps from admissions table
+    hadm = []
+    for i in df3['HADM_ID']:
+        if i in hadm: pass
+        else: hadm.append(i)
+    hadm = [str(i) for i in hadm]
+    cut = int(len(hadm)/5)
+    #SQLite limits # of host parameters per argument to 999... so need to break up hadm into 5 parts
+    for i in range (0,5):   
+        temp = hadm[i*cut:((i+1)*cut)]
+        print (i*cut, (i+1)*cut)
+        if i == 4:
+            temp = hadm[i*cut:]
+            print ("ignore above")
+        sql = "SELECT HADM_ID, ADMITTIME AS 'TIME' FROM admissions WHERE HADM_ID in ({seq})".format(seq=','.join(['?']*len(temp)))
+        dfs = pd.read_sql_query(sql=sql, con=conn, params = temp)
+        if i == 0: 
+            df_t = dfs
+        else: df_t = pd.concat([df_t,dfs])
+        
+    df3 = pd.merge(df3, df_t, how = 'outer', on = 'HADM_ID')
+    df3['VALUE'] = 1                        #add value of '1' for each diagnosis feature
+    
+    frames = [df1, df2, df3]
+    df = pd.concat(frames, keys=['l','p', 'd'])
     return (df1, df2, df3, df)
     
 def data_entry():
