@@ -5,8 +5,8 @@
 - Contains functions for building UFM tables from MIMIC III.
 - MIMIC III files were obtained from PhysioNet as per recommendation. 
 - UFM tables are feature tables that lists all relevant laboratory, procedural and diagnostic events for patients of interest.
-    *Each feature is labeled with prefix 'l_', 'p_', or 'd_', indicating type of feature (laboratory, procedural or diagnostic) 
-    *Each feature is labled with Timestamp to facilitate temporal sequencing and context embedding
+      *Each feature is labeled with prefix 'l_', 'p_', or 'd_', indicating type of feature (laboratory, procedural or diagnostic) 
+      *Each feature is labled with Timestamp to facilitate temporal sequencing and context embedding
 - 4 reference tables are made to assist UFM table interpretation:
     *Ref1. Demographic Information
     *Ref2. Timestamp to Epoch Integer Conversion
@@ -47,7 +47,7 @@
     *'DESCRIPTION' refers to the 'CATEGORY' descriptor in D_ITEMS or D_LABITEMS which provide 'higher level information' for the feature. e.g., 'CMP' is 'Comprehensive Metabolic Panel'.
 - Ref4: Lab Values Lookup
     *For each lab event feature in UFM table, the 'VALUEOUM' value units (when applicable) and 'FLAG' (which indicates measurement beyond normal thresholds) are linked from LABEVENTS data table.
-    *'LOINC REFERENCE' is linked to 'LOINC_CODE' provided in D_LABITEMS. LOINC reference codes can be looked up online (NOT provided by MIMIC), which describe in further detail about the nature of each lab procedure.
+    *'LOINC REFERENCE' is linked to 'LOINC_CODE' provided in D_LABITEMS. [LOINC reference codes](https://search.loinc.org/) can be looked up online (NOT provided by MIMIC), which describe in further detail about the nature of each lab procedure.
     
 
 ##FIN
