@@ -48,6 +48,4 @@
 - Ref4: Lab Values Lookup
     *For each lab event feature in UFM table, the 'VALUEOUM' value units (when applicable) and 'FLAG' (which indicates measurement beyond normal thresholds) are linked from LABEVENTS data table.
     *'LOINC REFERENCE' is linked to 'LOINC_CODE' provided in D_LABITEMS. [LOINC reference codes](https://search.loinc.org/) can be looked up online (NOT provided by MIMIC), which describe in further detail about the nature of each lab procedure.
-    
 
-##FIN
