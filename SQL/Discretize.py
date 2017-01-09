@@ -117,7 +117,7 @@ def discretize():
    
  #Make the dataframe into SQL table:
  
-        transfer.to_sql(df, name = 'Discete_Labs', con=conn, index=False, index_label = 'ROW_ID', if_exists = 'append', flavor = 'mysql')
+        transfer.to_sql(lab.df, name = 'Discete_Labs', con=conn, index=False, index_label = 'ROW_ID', if_exists = 'append', flavor = 'mysql')
            
 
     c.close()
