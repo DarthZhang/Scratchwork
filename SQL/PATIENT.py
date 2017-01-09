@@ -29,23 +29,14 @@ from datetime import timedelta
 from tempfile import mkdtemp
 
 
-admissions_doc = '/mnt/research/data/MIMIC3/physionet.org/works/MIMICIIIClinicalDatabase/files/version_1_3/ADMISSIONS.csv.gz'
-diagnoses_doc = '/mnt/research/data/MIMIC3/physionet.org/works/MIMICIIIClinicalDatabase/files/version_1_3/DIAGNOSES_ICD.csv.gz'
-icds_doc = '/mnt/research/data/MIMIC3/physionet.org/works/MIMICIIIClinicalDatabase/files/version_1_3/D_ICD_DIAGNOSES.csv.gz'
-procedures_doc = '/mnt/research/data/MIMIC3/physionet.org/works/MIMICIIIClinicalDatabase/files/version_1_3/PROCEDUREEVENTS_MV.csv.gz'
-labevents_doc = '/mnt/research/data/MIMIC3/physionet.org/works/MIMICIIIClinicalDatabase/files/version_1_3/LABEVENTS.csv.gz'
-items_doc = '/mnt/research/data/MIMIC3/physionet.org/works/MIMICIIIClinicalDatabase/files/version_1_3/D_ITEMS.csv.gz'
-labitems_doc = '/mnt/research/data/MIMIC3/physionet.org/works/MIMICIIIClinicalDatabase/files/version_1_3/D_LABITEMS.csv.gz'
-patients_doc = '/mnt/research/data/MIMIC3/physionet.org/works/MIMICIIIClinicalDatabase/files/version_1_3/PATIENTS.csv.gz'
-
-###### Part 1. OOP Patient by UFM Data ########
-###############################################
+###### OOP Patient with UFM Data ########
+#########################################
 
 class Patient:
     
     count = 0
     
-    def __init__(ufm_slice, dx_features, lab_features, proc_features, query):
+    def __init__(ufm_slice, query):
         
         self.df = ufm_slice
         self.subj = list(set(self.df.SUBJECT_ID))[0]
@@ -61,12 +52,31 @@ class Patient:
         self.insurance = 0
         
         #initial features
-        self.dxs = dx_features
-        self.labs = lab_features
-        self.procs = proc_features
+        #self.dxs = dx_features
+        #self.labs = lab_features
+        #self.procs = proc_features
+        #self.dx_sparcity = 0
+        #self.label = 0
         
         count +=1
+        
+##### Part 1. Initialize dx_features, lab_features, and proc_features #####
+###########################################################################
+
+    def dx_features (self):
+ 
+        dx = self.df[self.df['TYPE']=='d']['FEATURE']
+        dx = list(set(filter(None,dx)))           
+
+        columns = list(set([str(i) for i in dx]))    
+        self.dxs = pd.DataFrame(columns=columns)
     
+        for key in columns:
+            self.dxs.loc[0, key] = 0
+                 
+
+##### Part 2. Make Feature Table #####
+######################################
         
     def get_ICDs(df, f):
         features = f.copy(deep = True)
@@ -92,126 +102,39 @@ class Patient:
     
 
     def make_feature_table (self):
-
     
-        print ("Making Feature Table...")
-        conn = mysql.connect (host=host, user=user, passwd=pw, db=mimic, port=port)
-        c = conn.cursor()
-
-        sparcity = []
-        X = []
-        Y = []
-        sess = 0
-    
-        for query in self.queries:
-            sess +=1
-            s, t1, t2 = query[0], query[1], query[2]
-            #timedelta determines how large to peak backwards for observation windows.
-            lst = list(features.columns)
+        #timedelta determines how large to peak backwards for observation windows.
+        lst = list(self.dxs.columns)
         
-            #observation window: t1 - obs to t1. obs := {30, 60, 90, 180, 360, 720, inf}
-            try:
-                df = pd.read_hdf(ufm, str(s))
-            except:
-                sql = "SELECT * FROM ufm WHERE SUBJECT_ID == {0}".format(s)
-                df = pd.read_sql_query(sql = sql, con = conn)
-            df['TIME'] = pd.to_datetime(df['TIME'])
-            mask = (df['TIME'] >= (t1-timedelta(days=obs))) & (df['TIME'] <=t1)
-            df = (df.loc[mask])[(df.loc[mask])['SUBJECT_ID']==s]
+        #observation window: t1 - obs to t1. obs := 720 days
         
-            #take only ICD9 features in df
-            df = df[df['FEATURE'].isin(lst)]
-            df = df.sort('TIME', ascending = True)
+        self.df['TIME'] = pd.to_datetime(self.df['TIME'])
+        mask = (self.df['TIME'] >= (self.t1-timedelta(days=720))) & (self.df['TIME'] <=self.t1)
+        self.df = (self.df.loc[mask])[(self.df.loc[mask])['SUBJECT_ID']==self.subj]
         
-            #print ("Currently on Session: {0} out of {1}.".format(sess, len(queries)))   
-            #print ("DF size: {0}, features size: {1}".format(len(df), len(features)))
+        #take only ICD9 features in df
+        self.df = self.df[self.df['FEATURE'].isin(lst)]
+        self.df = self.df.sort('TIME', ascending = True)
         
-            temp = get_ICDs(df, features)
-            x = temp.as_matrix()
-            trials = len(x)
+        #print ("Currently on Session: {0} out of {1}.".format(sess, len(queries)))   
+        #print ("DF size: {0}, features size: {1}".format(len(df), len(features)))
         
-            #print ("Size of x: {0}".format(x.shape))
-            temp = x.T
+        temp = self.get_ICDs(self.df, self.dxs)
+        x = temp.as_matrix()
         
-            try:
-                temp = [sum(i) for i in temp]
-            except:
-                for j in range(0,len(temp)):
-                    try: temp[j] = int(temp[j])
-                    except: temp[j] = int(temp[j][0])
-                temp = [sum(i) for i in temp]
-            
-            X.append(temp)
-            #sparcity.append(1-(sum(temp)/(len(temp)*trials)))
-            sparcity.append(1-(sum(temp)/(len(temp))))
+        #print ("Size of x: {0}".format(x.shape))
+        temp = x.T
         
-            if query[3] == 1: Y.append(1)
-            else: Y.append(0)
-        
-        c.close()
-        conn.close()        
-        
-        print ("DONE!")
-    
-        return (X, Y, sparcity)
-
-###### Part 2. Compilation #########
-####################################
-
-def main():
-    print ("Do work in Main.")
-    
-def ICD9_features (subj):
-    
-    conn = sqlite3.connect(mimic_doc)
-    c = conn.cursor()
-    
-    dx_f=[]
-    
-    count=0
-    for s in subj:
-        count+=1
-        print ("Session {0} out of {1}".format(count,len(subj)))
         try:
-            df = pd.read_hdf(ufm, str(s))
+            temp = [sum(i) for i in temp]
         except:
-            sql = "SELECT * FROM ufm WHERE SUBJECT_ID == {0}".format(s)
-            df = pd.read_sql_query(sql = sql, con = conn)
-        dx = df[df['TYPE']=='d']['FEATURE']
-        dx = list(set(filter(None,dx)))
-        dx_f+=dx
-        dx_f = list(set(dx_f))
-    
-    c.close()
-    conn.close()            
-
-    columns = list(set([str(i) for i in dx_f]))
-    print (len(columns))
-    
-    features = pd.DataFrame(columns=columns)
-    
-    for key in columns:
-        features.loc[0, key] = 0
+            for j in range(0,len(temp)):
+                try: temp[j] = int(temp[j])
+                except: temp[j] = int(temp[j][0])
+            temp = [sum(i) for i in temp]
+            
+        self.dx_sparcity = (1-(sum(temp)/(len(temp))))
         
-    print (len(features))           
-    
-    return (features)
-
-
-if __name__ == '__main__':
-    from optparse import OptionParser, OptionGroup
-    desc = "Welcome to UFM Table Maker by af1tang."
-    version = "version 1.0"
-    opt = OptionParser (description = desc, version=version)
-    opt.add_option ('-i', action = 'store', type ='string', dest='input', help='Please input path to Database File.')
-    opt.add_option ('-o', action = 'store', type = 'string', dest='output', default='CHF_data.pickle', help='Please state desired storage file for this session.')
-    (cli, args) = opt.parse_args()
-    opt.print_help()
-    
-    mimic = 'MIMIC3'
-    host = 'illidan-gpu-1.egr.msu.edu'
-    user = 'af1tang'
-    pw = 'illidan'    
-    port = 3306
-    
-    main()  
+        if self.query[3] == 1: self.label = 1
+        else: self.label = 0
+        
