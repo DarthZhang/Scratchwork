@@ -37,18 +37,41 @@ from sklearn import preprocessing
 
 class Patient:
         
-    def __init__(ufm_slice, epi_slice, query, library, self):
+    #def __init__(ufm_slice, epi_slice, query, library, self):
+    def __init__(self, ufm_slice, library):
         
         self.df = ufm_slice
-        #self.subj = list(set(self.df.SUBJECT_ID))[0]
+        self.df = self.df.sort(['HADM_ID','TIME'])
+        self.corpus = []
+        #self.corpus.append(list(set(self.df.SUBJECT_ID))[0])
         self.hadm = list(set(self.df.HADM_ID))
         #self.t1 = query[1] #initial observation time
         #self.t2 = query[2] #end observation time
         
         #epidemiological data
-        self.epi = epi_slice
+        #self.epi = epi_slice
         self.lib = library
+    
+    def Sentence (df, lib):
+        sentence = []
+        for index, row in df.iterrows():
+            word = list(map(lambda x: 1 if row['FEATURE'] == x[1].split('_')[0]  and str(row['DISCRETE_VALUE']) == x[1].split('_')[1] else 0, lib))
+            try:            
+                sentence.append(word.index(1))
+            except: pass
+        return (sentence)    
         
+    def Corpus(self):  
+        print ("+++++++++++")
+        print ("Patient ID: {0}".format(list(set(self.df.SUBJECT_ID))[0]))
+
+        for h in self.hadm:
+            print ("---")
+            print ("Admission ID: {0}".format(h))
+            sentence = Patient.Sentence(df = self.df[self.df['HADM_ID']==h], lib = self.lib)
+            self.corpus.append([h, sentence])
+            print ("Sentence Size: {0}".format(len(sentence)))
+            
         #initial features
         #self.dxs = dx_features
         #self.labs = lab_features
@@ -56,12 +79,8 @@ class Patient:
         #self.dx_sparcity = 0
         #self.label = 0
         
-    def sentences(self):
-        print ("hi")
     
-    def words (self):
-        one = preprocessing.OneHotEncoder()
-        
+                                
         
 
 ''' corpus ~ patient UFM slice
