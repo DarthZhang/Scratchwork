@@ -60,7 +60,7 @@ def main():
     flags = make_database(conn)
     lib = discretize(conn, flags)
     querying(conn)
-    embedding(conn, lib)
+    indexes = embedding(conn, lib)
     modeling()
 
 def make_database(conn):
@@ -110,10 +110,10 @@ def discretize(conn, flags):
         if np.isnan(v[1]) or v[1]<1:
             pass
         elif v[1] == 1: 
-            lib.append((count, v[0], 0))
+            lib.append((count, v[0]+'_'+'1', 0))
             count+=1
         else:
-            for i in range(0, v[1]): 
+            for i in range(0, v[1]+1): 
                 lib.append((count, v[0] + '_' + str(i), 0))
                 count+=1
     c.close()
@@ -126,7 +126,7 @@ def querying(conn):
     lmyc = ['1629']
     pten = ['1830', '193', '2330', '1930']
     stroke = ['43491', '43411', '4349', '43401', '434', '4340', '43401', '43410','43490'] 
-    sepsis = ['99591', '99592', '0389', '0380','0381', '03811', '03812', '03819', '03810', '0382', '0383', '0384', '0388', '03840', '03841', '03842', '03843', '03844', 03849']
+    sepsis = ['99591', '99592', '0389', '0380','0381', '03811', '03812', '03819', '03810', '0382', '0383', '0384', '0388', '03840', '03841', '03842', '03843', '03844', '03849']
     rf = ['5845','5849','5856', '5846', '5847', '5848', '5851', '5852', '5853', '5854', '5855', '5859']
     cirrhosis = ['5712','5715']
     t2dm = ['2500', '25000', '25001', '25002', '25003', '2501', '25010', '25011', '25012','25013', '2502', '25020', '25021', '25022', '25023', '25030', '2503', '25031', '25032', '25033', '25040', '25041', '25042', '25043', '2504', '2505', '25050', '25051', '25052', '25053', '2506', '25060', '25061', '25062', '25063', '2507', '25070', '25071', '25072', '25073', '2508', '25080', '25081', '25082', '25083', '2509', '25090', '25091', '25092', '25093']
@@ -162,9 +162,22 @@ def querying(conn):
     
 
 def embedding(conn, lib):
-    subj = pd.read_sql("SELECT DISTINCT SUBJECT_ID from UFM", conn)
-    subj =list(set(subj.SUBJECT_ID))
+    pts = pd.read_sql("SELECT DISTINCT SUBJECT_ID from UFM", conn)
+    pts =list(set(pts.SUBJECT_ID))
+    indexes = []
+    count = 0
+    for p in pts:
+        df = pd.read_sql("SELECT * from UFM2 where SUBJECT_ID = '%s'" %(p), conn)
+        print ("+++++++++++")
+        print ("Current Sess: {0}".format(count))
+        print ("Preview:")
+        print(df.head())
+        corpus = Patient(ufm_slice = df, library = lib)
+        corpus.Corpus()
+        indexes.append([p, corpus.corpus])
+        count+=1
     
+    return (indexes)
 
     
 def modeling():
