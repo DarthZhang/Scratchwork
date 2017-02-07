@@ -5,7 +5,8 @@ Created on Tue Jan 17 16:38:42 2017
 @author: andy
 """
 
-import sys, pickle
+import sys
+import _pickle as pickle
 import os.path as path
 
 import csv
@@ -20,6 +21,7 @@ from pandas.io import sql as transfer
 
 
 import numpy as np
+import gensim
 import math
 import datetime
 import matplotlib.pyplot as plt
@@ -32,6 +34,11 @@ from datetime import date
 from datetime import time
 from datetime import timedelta
 from sklearn import preprocessing
+
+from sklearn.metrics import accuracy_score, roc_auc_score, f1_score, precision_score, recall_score
+from sklearn import preprocessing, cross_validation
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import GridSearchCV, KFold
 
 
 ##### FILE LOCATIONS ######
@@ -59,9 +66,9 @@ def main():
     
     flags = make_database(conn)
     lib = discretize(conn, flags)
-    querying(conn)
-    indexes = embedding(conn, lib)
-    modeling()
+    CHF, Afib, STROKE, SEPSIS, RF, CIRRHOSIS, T2DM, CAD, ATH, ARDS = querying(conn)
+    dz = [CHF, Afib, STROKE, SEPSIS, RF, CIRRHOSIS, T2DM, CAD, ATH, ARDS]
+    modeling(conn, lib, dz)
 
 def make_database(conn):
     DB.make_sql(conn, admissions_doc, diagnoses_doc, icds_doc, procedures_doc, labevents_doc, items_doc, labitems_doc, patients_doc)
@@ -123,8 +130,8 @@ def discretize(conn, flags):
 def querying(conn):
     chf = ['40201', '40211', '40291', '40401', '40403', '40411', '40413', '40491', '40493', '4280', '428', '4281', '42820', '42822', '42830', '42832', '42840', '42842', '4289']
     afib = ['42731', '4271', '42789']
-    lmyc = ['1629']
-    pten = ['1830', '193', '2330', '1930']
+    #lmyc = ['1629']
+    #pten = ['1830', '193', '2330', '1930']
     stroke = ['43491', '43411', '4349', '43401', '434', '4340', '43401', '43410','43490'] 
     sepsis = ['99591', '99592', '0389', '0380','0381', '03811', '03812', '03819', '03810', '0382', '0383', '0384', '0388', '03840', '03841', '03842', '03843', '03844', '03849']
     rf = ['5845','5849','5856', '5846', '5847', '5848', '5851', '5852', '5853', '5854', '5855', '5859']
@@ -136,8 +143,8 @@ def querying(conn):
 
     CHF = Disease(chf, conn)
     Afib = Disease(afib, conn)
-    LMYC = Disease(lmyc, conn)
-    PTEN = Disease(pten, conn)
+    #LMYC = Disease(lmyc, conn)
+    #PTEN = Disease(pten, conn)
     STROKE = Disease(stroke, conn)
     SEPSIS = Disease(sepsis, conn)
     RF = Disease(rf, conn)
@@ -147,42 +154,81 @@ def querying(conn):
     ATH = Disease(ath, conn)
     ARDS = Disease(ards, conn)
     
-    CHF.readmission()
-    Afib.readmission()
-    LMYC.readmission()
-    PTEN.readmission()
-    STROKE.readmission()
-    SEPSIS.readmission()
-    RF.readmission()
-    CIRRHOSIS.readmission()
-    T2DM.readmission()
-    CAD.readmission()
-    ATH.readmission()
-    ARDS.readmission()
+    
+    CHF.readmission(); print ("{0} done.".format(CHF))
+    Afib.readmission(); print ("{0} done.".format(Afib))
+    #LMYC.readmission()
+    #PTEN.readmission()
+    STROKE.readmission(); print ("{0} done.".format(STROKE))
+    SEPSIS.readmission(); print ("{0} done.".format(SEPSIS))
+    RF.readmission(); print ("{0} done.".format(RF))
+    CIRRHOSIS.readmission(); print ("{0} done.".format(CIRRHOSIS))
+    T2DM.readmission(); print ("{0} done.".format(T2DM))
+    CAD.readmission(); print ("{0} done.".format(CAD))
+    ATH.readmission(); print ("{0} done.".format(ATH))
+    ARDS.readmission(); print ("{0} done.".format(ARDS))
+    return (CHF, Afib, STROKE, SEPSIS, RF, CIRRHOSIS, T2DM, CAD, ATH, ARDS)
     
 
-def embedding(conn, lib):
-    pts = pd.read_sql("SELECT DISTINCT SUBJECT_ID from UFM", conn)
-    pts =list(set(pts.SUBJECT_ID))
-    indexes = []
+def embedding(conn, lib, pts):
+    #pts = pd.read_sql("SELECT DISTINCT SUBJECT_ID from UFM", conn)
+    #pts =list(set(pts.SUBJECT_ID))
+    corpus = []
     count = 0
+    
+    #make patient corpus for disease querying purposes (slow!)
     for p in pts:
         df = pd.read_sql("SELECT * from UFM2 where SUBJECT_ID = '%s'" %(p), conn)
         print ("+++++++++++")
         print ("Current Sess: {0}".format(count))
         print ("Preview:")
         print(df.head())
-        corpus = Patient(ufm_slice = df, library = lib)
-        corpus.Corpus()
-        indexes.append([p, corpus.corpus])
+        pt = Patient(ufm_slice = df, library = lib)
+        pt.Corpus()
+        corpus.append([p, pt.corpus])
         count+=1
+        
+    #make corpus for disease specific purposes (fast!)
+    keys = [k[1] for k in lib]
+    count = 0; sentences=  []
+    for p in pts:
+        df = pd.read_sql("SELECT * from UFM2 where SUBJECT_ID = '%s'" %(p), conn)
+        print ("Current Sess: {0}".format(count))
+        hadm = list(set(df.HADM_ID))
+        #df = df.sort('TIME')
+        for h in hadm:
+            sentence = []
+            for index, row in df[df['HADM_ID']==h].sort('TIME').iterrows():
+                word = row['FEATURE']+'_' + str(row['DISCRETE_VALUE'])
+                if word in keys: sentence.append(word)
+                sentences.append(sentence)
+                count +=1
     
-    return (indexes)
-
+    #skip-gram model
+    SG = gensim.models.Word2Vec(sentences = sentences, sg = 1, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
     
-def modeling():
-    model = Model()
+    #CBOW model
+    CBOW = gensim.models.Word2Vec(sentences = sentences, sg = 0, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
 
+    return (corpus, sentences, SG, CBOW)
+
+##### Under Construction #####  
+def modeling(conn, lib, dz):
+    pts = pd.read_sql("SELECT DISTINCT SUBJECT_ID from UFM", conn)
+    pts =list(set(pts.SUBJECT_ID))
+    #pool = []
+    #for d in dz:
+    #    pool += d.pos + d.neg
+   
+    for d in dz:
+        kf = KFold(n_splits = 5, shuffle = True)
+        for train_index, test_index in kf.split(d.pos):
+            d_train, d_test = d.pos[train_index], d.pos[test_index]
+            lst = [i for i in pts if i not in d_test]
+            corpus, sentences, SG, CBOW = embedding(conn, lib, lst)
+            
+
+##############################
 
 if __name__ == '__main__':
     from optparse import OptionParser, OptionGroup
