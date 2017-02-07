@@ -69,6 +69,9 @@ class Disease:
         
     def readmission (self):
         self.queries = []
+        self.pos = []
+        self.neg = []
+        self.exempt = []
         
         self.zeroes = 0
         self.ones = 0
@@ -80,17 +83,22 @@ class Disease:
             t = sorted(t)
             temp = sorted([i for i in t if not self.dx[(self.dx['HADM_ID']==i[1])&(self.dx['ICD9_CODE'].isin(self.dz))].empty])
         
-            if len(temp) == 0: 
-                self.zeroes +=1
-            elif len(temp) == 1: 
-                self.ones +=1
-                self.queries.append((s, temp[0][0], temp[0][0]+timedelta(days=180), 0))
-            else:
-                self.many +=1
-                if (temp[-1] != t[-1]):
-                    self.queries.append((s, temp[-1][0], temp[-1][0]+timedelta(days=180), 0))
-                else:
-                    self.queries.append((s, temp[-2][0], temp[-1][0], 1))
+            #if len(temp) == 0: 
+            #    self.zeroes +=1
+            #elif len(temp) == 1: 
+            #    self.ones +=1
+            #    self.queries.append((s, temp[0][0], temp[0][0]+timedelta(days=30), 0))
+            #else:
+             #   self.many +=1
+                #if(temp[-1] != t[-1]):
+                #    self.queries.append((s, temp[-1][0], temp[-1][0]+timedelta(days=30), 0))
+                #    self.pos.append(s)
+                #elif (temp[-1][0] - temp[-2][0]).days > 30:
+                
+                #    self.exempt.append(s)
+                #else:
+                #    self.queries.append((s, temp[-2][0], temp[-1][0], 1))
+                #    self.neg.append(s)
 
                 
     def mortality (self):
