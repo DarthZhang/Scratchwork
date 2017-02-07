@@ -5,7 +5,8 @@ Created on Tue Jan  3 13:26:53 2017
 @author: af1tang
 """
 
-import sys, pickle
+import sys
+import _pickle as pickle
 import os.path as path
 
 import csv
@@ -52,7 +53,7 @@ class Patient:
         #self.epi = epi_slice
         self.lib = library
     
-    def Sentence (df, lib):
+    def Sentence_n (df, lib):
         sentence = []
         for index, row in df.iterrows():
             word = list(map(lambda x: 1 if row['FEATURE'] == x[1].split('_')[0]  and str(row['DISCRETE_VALUE']) == x[1].split('_')[1] else 0, lib))
@@ -61,6 +62,15 @@ class Patient:
             except: pass
         return (sentence)    
         
+    def Sentence_w (df, lib):
+        sentence = []
+        for index, row in df.iterrows():
+            word = list(map(lambda x: x[1] if row['FEATURE'] == x[1].split('_')[0]  and str(row['DISCRETE_VALUE']) == x[1].split('_')[1] else 0, lib))
+            try:          
+                sentence.append([w for i, w in enumerate(word) if w!=0][0])
+            except: pass
+        return (sentence)  
+        
     def Corpus(self):  
         print ("+++++++++++")
         print ("Patient ID: {0}".format(list(set(self.df.SUBJECT_ID))[0]))
@@ -68,7 +78,9 @@ class Patient:
         for h in self.hadm:
             print ("---")
             print ("Admission ID: {0}".format(h))
-            sentence = Patient.Sentence(df = self.df[self.df['HADM_ID']==h], lib = self.lib)
+            #sentece: word or index sequence?
+            #sentence = Patient.Sentence_n(df = self.df[self.df['HADM_ID']==h], lib = self.lib)
+            sentence = Patient.Sentence_w(df = self.df[self.df['HADM_ID']==h], lib = self.lib)
             self.corpus.append([h, sentence])
             print ("Sentence Size: {0}".format(len(sentence)))
             
