@@ -201,8 +201,8 @@ def embedding(conn, lib, pts):
             for index, row in df[df['HADM_ID']==h].sort('TIME').iterrows():
                 word = row['FEATURE']+'_' + str(row['DISCRETE_VALUE'])
                 if word in keys: sentence.append(word)
-                sentences.append(sentence)
-                count +=1
+            sentences.append((p, h, sentence))
+        count +=1
     
     #skip-gram model
     SG = gensim.models.Word2Vec(sentences = sentences, sg = 1, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
