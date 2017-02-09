@@ -68,7 +68,8 @@ def main():
     lib = discretize(conn, flags)
     CHF, Afib, STROKE, SEPSIS, RF, CIRRHOSIS, T2DM, CAD, ATH, ARDS = querying(conn)
     dz = [CHF, Afib, STROKE, SEPSIS, RF, CIRRHOSIS, T2DM, CAD, ATH, ARDS]
-    modeling(conn, lib, dz)
+    sentences = embedding(conn, lib)
+    modeling(conn, sentences, dz)
 
 def make_database(conn):
     DB.make_sql(conn, admissions_doc, diagnoses_doc, icds_doc, procedures_doc, labevents_doc, items_doc, labitems_doc, patients_doc)
@@ -170,62 +171,55 @@ def querying(conn):
     return (CHF, Afib, STROKE, SEPSIS, RF, CIRRHOSIS, T2DM, CAD, ATH, ARDS)
     
 
-def embedding(conn, lib, pts):
-    #pts = pd.read_sql("SELECT DISTINCT SUBJECT_ID from UFM", conn)
-    #pts =list(set(pts.SUBJECT_ID))
-    corpus = []
-    count = 0
-    
-    #make patient corpus for disease querying purposes (slow!)
-    for p in pts:
-        df = pd.read_sql("SELECT * from UFM2 where SUBJECT_ID = '%s'" %(p), conn)
-        print ("+++++++++++")
-        print ("Current Sess: {0}".format(count))
-        print ("Preview:")
-        print(df.head())
-        pt = Patient(ufm_slice = df, library = lib)
-        pt.Corpus()
-        corpus.append([p, pt.corpus])
-        count+=1
-        
-    #make corpus for disease specific purposes (fast!)
-    keys = [k[1] for k in lib]
-    count = 0; sentences=  []
-    for p in pts:
-        df = pd.read_sql("SELECT * from UFM2 where SUBJECT_ID = '%s'" %(p), conn)
-        print ("Current Sess: {0}".format(count))
-        hadm = list(set(df.HADM_ID))
-        #df = df.sort('TIME')
-        for h in hadm:
-            sentence = []
-            for index, row in df[df['HADM_ID']==h].sort('TIME').iterrows():
-                word = row['FEATURE']+'_' + str(row['DISCRETE_VALUE'])
-                if word in keys: sentence.append(word)
-            sentences.append((p, h, sentence))
-        count +=1
-    
-    #skip-gram model
-    SG = gensim.models.Word2Vec(sentences = sentences, sg = 1, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
-    
-    #CBOW model
-    CBOW = gensim.models.Word2Vec(sentences = sentences, sg = 0, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
-
-    return (corpus, sentences, SG, CBOW)
-
-##### Under Construction #####  
-def modeling(conn, lib, dz):
+def embedding(conn, lib):
     pts = pd.read_sql("SELECT DISTINCT SUBJECT_ID from UFM", conn)
     pts =list(set(pts.SUBJECT_ID))
+
+    #even faster?
+    keys = [k[1] for k in lib]
+    count =0; sentences = []
+    c = conn.cursor()
+    for p in pts:
+        sql = "SELECT FEATURE, DISCRETE_VALUE, HADM_ID, TIME from UFM2  WHERE SUBJECT_ID = '%s' ORDER BY HADM_ID, TIME" %(p)
+        print ("Sess: {0}".format(count))
+        c.execute(sql)
+        lst = list(c.fetchall())
+        hadm = list(set([h[2] for h in lst]))
+        for h in hadm:
+            temp = sorted([i for i in lst if i[2] == h], key = lambda x: x[3])
+            sentence = [i[0]+'_'+str(i[1]) for i in temp if (i[0]+'_'+str(i[1])) in keys]
+            t = [pd.to_datetime(i[3]) for i in temp if (i[0] + '_' + str(i[1])) in keys]
+            sentences.append((p, h, sentence, t))
+        count+=1
+        
+    c.close()
+    #skip-gram model
+    #SG = gensim.models.Word2Vec(sentences = sentences, sg = 1, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
+    
+    #CBOW model
+    #CBOW = gensim.models.Word2Vec(sentences = sentences, sg = 0, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
+
+    return (sentences)
+
+##### Under Construction #####  
+def modeling(conn, sentences, dz):
+    #pts = pd.read_sql("SELECT DISTINCT SUBJECT_ID from UFM", conn)
+    #pts =list(set(pts.SUBJECT_ID))
     #pool = []
     #for d in dz:
     #    pool += d.pos + d.neg
    
     for d in dz:
+        pts = d.pos+d.neg
         kf = KFold(n_splits = 5, shuffle = True)
         for train_index, test_index in kf.split(d.pos):
             d_train, d_test = d.pos[train_index], d.pos[test_index]
-            lst = [i for i in pts if i not in d_test]
-            corpus, sentences, SG, CBOW = embedding(conn, lib, lst)
+            lst = [i[2] for i in sentences if i[0] not in d_test]
+            
+            #word2vec:
+            SG = gensim.models.Word2Vec(sentences = lst, sg = 1, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
+            CBOW = gensim.models.Word2Vec(sentences = lst, sg = 0, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
+
             
 
 ##############################
@@ -255,6 +249,7 @@ if __name__ == '__main__':
     conn.close()
 
 
+
 ##### DISEASES ######
 #####################
 
@@ -271,4 +266,38 @@ if __name__ == '__main__':
 #11) ATH = ['4400', '44000', '4401', '44010', '4402', '44020', '4403', '44030', '4404', '44040','4408', '44080', '4409', '44090', '44021', '44022', '44023', '44024', '44029', '44031', '44032']
 #12) ARDS = ['51881', '51884', '51883'] #EXCLUDING trauma/surgery related resp. failure.
 
+##### Scratch Work #####
+########################
 
+#### EMBEDDING #####
+   # corpus = []
+   # count = 0
+    
+    #make patient corpus for disease querying purposes (slow!)
+    #for p in pts:
+    #    df = pd.read_sql("SELECT * from UFM2 where SUBJECT_ID = '%s'" %(p), conn)
+    #    print ("+++++++++++")
+    #    print ("Current Sess: {0}".format(count))
+    #    print ("Preview:")
+    #    print(df.head())
+    #    pt = Patient(ufm_slice = df, library = lib)
+    #    pt.Corpus()
+    #    corpus.append([p, pt.corpus])
+    #    count+=1
+        
+    #make corpus for disease specific purposes (fast!)
+    #keys = [k[1] for k in lib]
+    #count = 0; sentences=  []
+    #for p in pts:
+    #    df = pd.read_sql("SELECT * from UFM2 where SUBJECT_ID = '%s'" %(p), conn)
+    #    print ("Current Sess: {0}".format(count))
+    #    hadm = list(set(df.HADM_ID))
+        #df = df.sort('TIME')
+     #   for h in hadm:
+     #       sentence = []
+     #       for index, row in df[df['HADM_ID']==h].sort('TIME').iterrows():
+     #           word = row['FEATURE']+'_' + str(row['DISCRETE_VALUE'])
+     #           if word in keys: sentence.append(word)
+     #       sentences.append((p, h, sentence))
+     #   count +=1
+        
