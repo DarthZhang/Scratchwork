@@ -86,16 +86,19 @@ class Disease:
             neg=[]            
             
             if len(t) <2: 
-                neg.append((s, t[0][0], t[0][1]))
+                neg.append((s, t[0][0], t[0][1], 0))
                 #print ((s,t[0][0], t[0][1]))
             else:   
                 for t2,t1 in Disease.pairwise(iterable = reversed(t)):
                     if self.dx[(self.dx['HADM_ID']==t1[1])&(self.dx['ICD9_CODE'].isin(self.dz))].empty:
-                        neg.append((s, t1[0], t1[1]))
+                        if self.dx[(self.dx['HADM_ID']==t2[1])&(self.dx['ICD9_CODE'].isin(self.dz))].empty:
+                            pass
+                        else: 
+                            neg.append((s, t2[0], t2[1], 0))
                     elif (t2[0]-t1[0]).days >30:
-                        neg.append((s, t1[0], t1[1]))
+                        neg.append((s, t1[0], t1[1], 0))
                     else:
-                        pos.append((s, t1[0], t1[1]))
+                        pos.append((s, t1[0], t1[1], 1))
                         #print ((s, t1[0], t1[1]))
             
             if len(pos) >0:
