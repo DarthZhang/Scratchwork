@@ -23,6 +23,7 @@ from pandas.io import sql as transfer
 import numpy as np
 import gensim
 import math
+import random
 import datetime
 import matplotlib.pyplot as plt
 import re
@@ -39,6 +40,12 @@ from sklearn.metrics import accuracy_score, roc_auc_score, f1_score, precision_s
 from sklearn import preprocessing, cross_validation
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV, KFold
+
+from keras.preprocessing import sequence
+from keras.models import Sequential
+from keras.layers import Dense, LSTM, Dropout
+from keras.layers.convolutional import Convolution1D, MaxPooling1D
+from keras.layers.embeddings import Embedding
 
 
 ##### FILE LOCATIONS ######
@@ -59,7 +66,7 @@ patients_doc = '/mnt/research/data/MIMIC3/physionet.org/works/MIMICIIIClinicalDa
 import DatabaseBuilder as DB
 import Disease
 from Discretize import Lab
-import Patient
+import PATIENT as Patient
 
 
 def main():
@@ -208,18 +215,60 @@ def modeling(conn, sentences, dz):
     #pool = []
     #for d in dz:
     #    pool += d.pos + d.neg
+    np.random.seed(100)
+    decay = .9
+    
+    admits = pd.read_sql("SELECT * from admissions", conn)
    
     for d in dz:
-        pts = d.pos+d.neg
-        kf = KFold(n_splits = 5, shuffle = True)
-        for train_index, test_index in kf.split(d.pos):
-            d_train, d_test = d.pos[train_index], d.pos[test_index]
-            lst = [i[2] for i in sentences if i[0] not in d_test]
+        neg = random.sample(d.neg, len(d.pos))
+        pts = d.pos+neg
+        kf = KFold(n_splits = 5, shuffle = False)
+        for train_index, test_index in kf.split(pts):
+            
+            #each train, test has format (s, time, hadm, 1/0)
+            train, test = pts[train_index], pts[test_index]
+            
+            #make exclusion list for test patients
+            introns = [t[0] for t in test]
+            #instance = [t[2] for t in test]
+            #sentences have format (s, hadm, [words], [times])
+            lst = [i[2] for i in sentences if i[0] not in introns]
             
             #word2vec:
+            #configure hyperparams as appropriate
             SG = gensim.models.Word2Vec(sentences = lst, sg = 1, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
             CBOW = gensim.models.Word2Vec(sentences = lst, sg = 0, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
 
+            #construct sequence feature from train(ing) set
+            #X stands for raw feature input
+            #W stands for word vectors from feature input trained by Word2Vec
+            exons = [t[0] for t in train]
+            X_train = []
+            t_train = []
+            W_train = []
+            X_test = []
+            t_test = []
+            W_test = []
+            
+            for t in train:
+                #corpus is n x 2 tensor with each column containing the words and timing, respectively
+                corpus = [(s[2], s[3]) for s in sentences if (pd.to_datetime(admits[admits['HADM_ID']==s[1]].ADMITTIME.values[0]) <= t[1]) and (s[0] == t[0])]
+                #corpus[0] are the word sequences, n x d (variable!)
+                X_train.append(np.array(corpus[0]))
+                #corpus[1] are the time sequences, also n x d (variable!)
+                t_train.append(np.array(corpus[1]))
+                #decay_factor is .9 ^ corpus[1].index()[i], an nx1 vector
+                decay_factor = np.array([math.pow(decay, l) for l in corpus[1].index()])
+                #w is elementwise operation on words .* e ^ (decay_factor * time), results in n x d (variable!)
+                w = np.multiply(np.array(corpus[0]), math.exp(np.array(corpus[1]).T * decay_factor))
+                W_train.append(w)
+                
+            Y_train = list(map(lambda x: 1 if x[3] ==1 else 0, train))
+            Y_test = list(map(lambda x: 1 if x[3] ==1 else 0, test))
+
+            #build keras layers
+            
             
 
 ##############################
