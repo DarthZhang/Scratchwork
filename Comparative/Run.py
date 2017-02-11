@@ -209,14 +209,101 @@ def embedding(conn, lib):
     return (sentences)
 
 ##### Under Construction #####  
+def training (X, W, Y):
+    np.random.seed(100)
+    models = []
+    top_words = 9444
+
+    #CNN with decay
+    model = Sequential()
+    model.add(Convolution1D(nb_filter = 300, filter_length = 3, border_mode = 'same', activation = 'relu'))
+    model.add(MaxPooling1D(pool_length = 2))
+    model.add(LSTM(100))
+    model.add(Dense(1, activation = 'sigmoid'))
+    model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
+    print(model.summary())
+    model.fit(W, Y, nb_epoch = 10, batch_size = 1000)
+    models.append(("Decay CNN", model))
+    
+    #Non-decay CNN
+    x = sequence.pad_sequences(X)
+    embedding_length = 300
+    model = Sequential()
+    model.add(Embedding(top_words, embedding_length))    
+    model = Sequential()
+    model.add(Convolution1D(nb_filter = 300, filter_length = 3, border_mode = 'same', activation = 'relu'))
+    model.add(MaxPooling1D(pool_length = 2))
+    model.add(LSTM(100))
+    model.add(Dense(1, activation = 'sigmoid'))
+    model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
+    print(model.summary())
+    model.fit(x, Y, nb_epoch = 10, batch_size = 1000)
+    models.append(("Non-decay CNN", model))
+    
+    #Non-decay CNN with dropouts
+    x = sequence.pad_sequences(X)
+    embedding_length = 300
+    model = Sequential()
+    model.add(Embedding(top_words, embedding_length, dropout=0.2))    
+    model = Sequential()
+    model.add(Convolution1D(nb_filter = 300, filter_length = 3, border_mode = 'same', activation = 'relu'))
+    model.add(MaxPooling1D(pool_length = 2))
+    model.add(LSTM(100, dropout_W = 0.2, dropout_W = 0.2))
+    model.add(Dense(1, activation = 'sigmoid'))
+    model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
+    print(model.summary())
+    model.fit(x, Y, nb_epoch = 10, batch_size = 1000)
+    models.append(("drop out CNN ", model))
+
+    #LSTM with decay
+    model = Sequential()
+    model.add(LSTM(100))
+    model.add(Dense(1, activation = 'sigmoid'))
+    model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
+    print (model.summary())
+    model.fit(W, Y, nb_epoch = 10, batch_size = 1000)
+    models.append(("Decay LSTM", model))
+    
+    #Non-decay LSTM
+    x = sequence.pad_sequences(X)
+    embedding_length = 300
+    model = Sequential()
+    model.add(Embedding(top_words, embedding_length))
+    model.add(LSTM(100))
+    model.add(Dense(1, activation = 'sigmoid'))
+    model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
+    print (model.summary())
+    model.fit(x, Y, nb_epoch = 10, batch_size = 1000)
+    models.append(("Non-decay LSTM", model))
+    
+    #Non-decay LSTM with dropouts
+    x = sequence.pad_sequences(X)
+    embedding_length = 300
+    model = Sequential()
+    model.add(Embedding(top_words, embedding_length, dropout=0.2))
+    #model.add(Dropout(0.2))
+    model.add(LSTM(100, dropout_W = 0.2, dropout_U = 0.2))
+    #model.add(Dropout(0.2))
+    model.add(Dense(1, activation = 'sigmoid'))
+    model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
+    print (model.summary())    
+    model.fit(x, Y, nb_epoch = 10, batch_size = 1000)
+    models.append(("dropout LSTM", model))
+
+    return (models)
+
+def test (X, W, Y, model):
+    pass
+
 def modeling(conn, sentences, dz):
     #pts = pd.read_sql("SELECT DISTINCT SUBJECT_ID from UFM", conn)
     #pts =list(set(pts.SUBJECT_ID))
     #pool = []
     #for d in dz:
     #    pool += d.pos + d.neg
-    np.random.seed(100)
+
     decay = .9
+    data = []; Data = []
     
     admits = pd.read_sql("SELECT * from admissions", conn)
    
@@ -225,7 +312,6 @@ def modeling(conn, sentences, dz):
         pts = d.pos+neg
         kf = KFold(n_splits = 5, shuffle = False)
         for train_index, test_index in kf.split(pts):
-            
             #each train, test has format (s, time, hadm, 1/0)
             train, test = pts[train_index], pts[test_index]
             
@@ -238,38 +324,98 @@ def modeling(conn, sentences, dz):
             #word2vec:
             #configure hyperparams as appropriate
             SG = gensim.models.Word2Vec(sentences = lst, sg = 1, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
-            CBOW = gensim.models.Word2Vec(sentences = lst, sg = 0, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
+            #CBOW = gensim.models.Word2Vec(sentences = lst, sg = 0, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
 
             #construct sequence feature from train(ing) set
             #X stands for raw feature input
             #W stands for word vectors from feature input trained by Word2Vec
-            exons = [t[0] for t in train]
-            X_train = []
-            t_train = []
-            W_train = []
-            X_test = []
-            t_test = []
-            W_test = []
+            X_train = []; t_train = []; W_train = []; Y_train = []
+            X_test = []; t_test = []; W_test = []; Y_test = []
             
             for t in train:
+              
                 #corpus is n x 2 tensor with each column containing the words and timing, respectively
-                corpus = [(s[2], s[3]) for s in sentences if (pd.to_datetime(admits[admits['HADM_ID']==s[1]].ADMITTIME.values[0]) <= t[1]) and (s[0] == t[0])]
-                #corpus[0] are the word sequences, n x d (variable!)
-                X_train.append(np.array(corpus[0]))
-                #corpus[1] are the time sequences, also n x d (variable!)
-                t_train.append(np.array(corpus[1]))
-                #decay_factor is .9 ^ corpus[1].index()[i], an nx1 vector
-                decay_factor = np.array([math.pow(decay, l) for l in corpus[1].index()])
-                #w is elementwise operation on words .* e ^ (decay_factor * time), results in n x d (variable!)
-                w = np.multiply(np.array(corpus[0]), math.exp(np.array(corpus[1]).T * decay_factor))
-                W_train.append(w)
+                #only select the admission sequences which occur BEFORE the queried admission
+                corpus = [[s[2], s[3]] for s in sentences if  (s[0] == t[0]) and (pd.to_datetime(admits[admits['HADM_ID']==s[1]].ADMITTIME.values[0]) <= t[1])]
                 
-            Y_train = list(map(lambda x: 1 if x[3] ==1 else 0, train))
-            Y_test = list(map(lambda x: 1 if x[3] ==1 else 0, test))
+                #order subject by time of entry for each sentence (admission)
+                corpus = sorted(corpus, key = lambda x: x[1])
+                
+                #configure each timestamp to reflect time elapsed from first time entry
+                #calculate time decay from initial event
+                for item in range(len(corpus)):
+                    corpus[item][1] = corpus[item][1] - corpus[0][1]
+                #initial time entry is set to 0
+                #e.g., corpus[0][1] = 0                
+                
+                #transpose into 2xn from nx2
+                #this way, corpus[0] refers to words and corpus[1] refers to times
+                corpus = list(map(list, zip(*corpus)))                  
+                
+                #corpus[0] are the word sequences, 1 x n (variable!) 
+                #n is number of admissions (rows)
+                #d is the number of events
+                X_train.append(np.array(corpus[0]))
+                #corpus[1] are the time sequences, also 1 x n (variable!)
+                t_train.append(np.array(corpus[1]))
+                #decay_factor is formulated as -lambda (decay) * time elapsed since intial time, an 1 x n vector
+                decay_factor = np.array([math.exp(-1 * decay * elapse) for elapse in corpus[1]])
+                
+                #w is X projected into word vector form
+                #results in n (variable!) x 300
+                #w is elementwise operation on word vectors .* e ^ (decay_factor * time)
+                w = np.multiply(np.array([SG[c] for c in corpus[0]]), decay_factor)
+                #should now be 300x1
+                W_train.append(w)
+                #add label, which is last item of t in train
+                Y_train.append(t[3])
+                
+            for t in test:
+              
+                #corpus is n x 2 tensor with each column containing the words and timing, respectively
+                #only select the admission sequences which occur BEFORE the queried admission
+                corpus = [[s[2], s[3]] for s in sentences if (s[0] == t[0]) and (pd.to_datetime(admits[admits['HADM_ID']==s[1]].ADMITTIME.values[0]) <= t[1])]
+                
+                #order subject by time of entry for each sentence (admission)
+                corpus = sorted(corpus, key = lambda x: x[1])
 
-            #build keras layers
+                #configure each timestamp to reflect time elapsed from first time entry
+                #calculate time decay from initial event
+                for item in range(len(corpus)):
+                    corpus[item][1] = corpus[item][1] - corpus[0][1]
+                #initial time entry is set to 0
+                corpus[0][1] = 0                
+                
+                #transpose into 2xn from nx2
+                #this way, corpus[0] refers to words and corpus[1] refers to times
+                corpus = list(map(list, zip(*corpus)))                
+                
+                #corpus[0] are the word sequences, 1 x n (variable!) 
+                #n is number of admissions (rows)
+                #d is the number of events
+                X_test.append(np.array(corpus[0]))
+                #corpus[1] are the time sequences, also 1 x n (variable!)
+                t_test.append(np.array(corpus[1]))                
+                #decay_factor is formulated as -lambda (decay) * time elapsed since intial time, an nx1 vector
+                decay_factor = np.array([math.exp(-1 * decay * elapse) for elapse in corpus[1]])
+                
+                #w is elementwise operation on words .* e ^ (decay_factor * time)
+                w = np.multiply(np.array([SG[c] for c in corpus[0]]), decay_factor)
+                W_test.append(w)
+                #add label, which is last item of t in train
+                Y_test.append(t[3])
+                
+            #Y_train = list(map(lambda x: 1 if x[3] ==1 else 0, train))
+            #Y_test = list(map(lambda x: 1 if x[3] ==1 else 0, test))
+
+            #training
+            models = training(X_train, W_train, Y_train)
+            #testing
+            for m in models:
+                data.append(test(X_test, W_test, Y_test, m))
+        Data.append(data)
             
-            
+    return (Data)
 
 ##############################
 
