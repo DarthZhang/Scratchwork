@@ -6,7 +6,7 @@ Created on Tue Jan 17 16:38:42 2017
 """
 
 import sys
-import _pickle as pickle
+import pickle
 import os.path as path
 
 import csv
@@ -30,7 +30,7 @@ import re
 
 from scipy import stats
 from collections import Counter
-from itertools import combinations
+from itertools import combinations, tee, chain
 from datetime import date
 from datetime import time
 from datetime import timedelta
@@ -39,9 +39,11 @@ from sklearn import preprocessing
 from sklearn.metrics import accuracy_score, roc_auc_score, f1_score, precision_score, recall_score
 from sklearn import preprocessing, cross_validation
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import GridSearchCV, KFold
+from sklearn.model_selection import GridSearchCV, StratifiedKFold
+from keras.wrappers.scikit_learn import KerasClassifier
 
 from keras.preprocessing import sequence
+from keras.preprocessing.text import Tokenizer
 from keras.models import Sequential
 from keras.layers import Dense, LSTM, Dropout
 from keras.layers.convolutional import Convolution1D, MaxPooling1D
@@ -76,7 +78,7 @@ def main():
     CHF, Afib, STROKE, SEPSIS, RF, CIRRHOSIS, T2DM, CAD, ATH, ARDS = querying(conn)
     dz = [CHF, Afib, STROKE, SEPSIS, RF, CIRRHOSIS, T2DM, CAD, ATH, ARDS]
     sentences = embedding(conn, lib)
-    modeling(conn, sentences, dz)
+    modeling(conn, sentences, lib, dz)
 
 def make_database(conn):
     DB.make_sql(conn, admissions_doc, diagnoses_doc, icds_doc, procedures_doc, labevents_doc, items_doc, labitems_doc, patients_doc)
@@ -209,6 +211,288 @@ def embedding(conn, lib):
     return (sentences)
 
 ##### Under Construction #####  
+    
+def d_cnn_train(dropout_W = 0.2, dropout_U = 0.2, weight_constraint = 0):
+    model = Sequential()
+    model.add(Convolution1D(nb_filter = 300, filter_length = 3, border_mode = 'same', activation = 'relu'))
+    model.add(MaxPooling1D(pool_length = 2))
+    model.add(LSTM(100, dropout_W = dropout_W, dropout_U = dropout_U, W_constraint = weight_constraint))
+    model.add(Dense(1, activation = 'sigmoid'))
+    model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
+    return (model)
+
+def cnn_train(dropout=0.2, dropout_W = 0.2, dropout_U = 0.2, weight_constraint = 0):
+    top_words = 9444
+    embedding_length = 300
+    max_length = 500
+    model = Sequential()
+    model.add(Embedding(top_words, embedding_length, input_length=max_length, dropout=dropout))    
+    model.add(Convolution1D(nb_filter = 300, filter_length = 3, border_mode = 'same', activation = 'relu'))
+    model.add(MaxPooling1D(pool_length = 2))
+    model.add(LSTM(100, dropout_W = dropout_W, dropout_U = dropout_U, W_constraint = weight_constraint))
+    model.add(Dense(1, activation = 'sigmoid'))
+    model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
+    return (model)
+
+def d_lstm_train(dropout_W = 0.2, dropout_U = 0.2, weight_constraint = 0):
+    model = Sequential()
+    model.add(LSTM(100, dropout_W = dropout_W, dropout_U = dropout_U, W_constraint = weight_constraint))
+    model.add(Dense(1, activation = 'sigmoid'))
+    model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
+    return (model)
+
+def lstm_train(dropout=0.2, dropout_W = 0.2, dropout_U = 0.2, weight_constraint = 0):
+    top_words = 9444
+    embedding_length = 300
+    max_length = 500
+    model = Sequential()
+    model.add(Embedding(top_words, embedding_length, input_length=max_length, dropout=dropout))    
+    model.add(LSTM(100, dropout_W = dropout_W, dropout_U = dropout_U, W_constraint = weight_constraint))
+    model.add(Dense(1, activation = 'sigmoid'))
+    model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
+    return (model)
+    
+def modeling(conn, sentences, lib, dz):
+    #pts = pd.read_sql("SELECT DISTINCT SUBJECT_ID from UFM", conn)
+    #pts =list(set(pts.SUBJECT_ID))
+    #pool = []
+    #for d in dz:
+    #    pool += d.pos + d.neg
+    np.random.seed(7)
+    decay = .0002
+    data = []
+    
+    admits = pd.read_sql("SELECT * from admissions", conn)
+   
+    for d in dz:    
+        for itr in range(0,5):
+            print ("Sess: {0}".format(itr))
+            neg = random.sample(d.neg, len(d.pos))
+            pts = d.pos+neg
+        
+            random.shuffle(pts)
+            print ("Trial number: {0}".format(itr))
+        
+            train, test= cross_validation.train_test_split(pts, test_size = .2)
+            #each train, test has format (s, time, hadm, 1/0)
+            
+            #make exclusion list for test patients
+            introns = [t[0] for t in test]
+            #instance = [t[2] for t in test]
+            #sentences have format (s, hadm, [words], [times])
+            lst = [i[2] for i in sentences if i[0] not in introns]
+            
+            #word2vec:
+            #configure hyperparams as appropriate
+            print ("Making SG...")
+            SG = gensim.models.Word2Vec(sentences = lst, sg = 1, size = 300, window = 10, min_count = 50, hs = 1, negative = 0, workers = 4)
+            print ("SG embedding complete.")
+            #CBOW = gensim.models.Word2Vec(sentences = lst, sg = 0, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
+
+            #construct sequence feature from train(ing) set
+            #X stands for raw feature input
+            #W stands for word vectors from feature input trained by Word2Vec
+            X_train = []; t_train = []; W_train = []; Y_train = []
+            X_test = []; t_test = []; W_test = []; Y_test = []
+            
+            for t in train:
+              
+                #corpus is n x 2 tensor with each column containing the words and timing, respectively
+                #only select the admission sequences which occur BEFORE the queried admission
+                corpus = [[s[2], s[3]] for s in sentences if  (s[0] == t[0]) and (pd.to_datetime(admits[admits['HADM_ID']==s[1]].ADMITTIME.values[0]) <= t[1])]
+                
+                #order subject by time of entry for each sentence (admission)
+                corpus = sorted(corpus, key = lambda x: x[1])
+                #transpose into nx2xd from 2xnxd
+                #this way, corpus[0] refers to words and corpus[1] refers to times
+                corpus = list(map(list, zip(*corpus)))                  
+                x_train = list(chain.from_iterable(corpus[0]))
+                t_stamps = list(chain.from_iterable(corpus[1]))
+                
+                #configure each timestamp to reflect time elapsed from first time entry
+                #calculate time decay from initial event
+                temp = t_stamps[0]
+                t_stamps = [ii-temp for ii in t_stamps]
+                decay_factor = np.array([math.exp(-1 * decay * elapse.total_seconds()/3600) for elapse in t_stamps])
+                
+                #temp = corpus[0][1][0]
+                #for ii in range(len(corpus)):
+                #    for ij in range(len(corpus[ii][1])):
+                #        corpus[ii][1][ij] = corpus[ii][1][ij] - temp
+                #initial time entry is set to 0
+                #e.g., corpus[0][1] = 0                
+                #decay_factor = np.array([[math.exp(-1 * decay * elapse.total_seconds()/3600) for elapse in timestrip] for timestrip in corpus[1]])
+
+                #corpus[0] are the word sequences, n x d (variable!) 
+                #n is number of admissions (rows)
+                #d is the number of events
+                X_train.append(np.array(x_train))
+                #corpus[1] are the time sequences, also n x d (variable!)
+                t_train.append(np.array(t_stamps))
+                #decay_factor is formulated as -lambda (decay) * time elapsed since intial time, an n x d vector
+                
+                #w is X projected into word vector form
+                #results in n x d x v
+                #w is elementwise operation on word vectors .* e ^ (decay_factor * time)
+                v = list(map(lambda x: SG[x] if x in SG.wv.vocab else [0]*300, x_train))
+                w = np.array(np.multiply(np.array(v)[index], decay_factor[index]) for index in range(len(decay_factor)))
+                #should now be 300x1
+                W_train.append(w)
+                #add label, which is last item of t in train
+                Y_train.append(t[3])
+                
+            for t in test:
+              
+                #corpus is n x 2 tensor with each column containing the words and timing, respectively
+                #only select the admission sequences which occur BEFORE the queried admission
+                corpus = [[s[2], s[3]] for s in sentences if (s[0] == t[0]) and (pd.to_datetime(admits[admits['HADM_ID']==s[1]].ADMITTIME.values[0]) <= t[1])]
+                
+                #order subject by time of entry for each sentence (admission)
+                corpus = sorted(corpus, key = lambda x: x[1])
+
+                #configure each timestamp to reflect time elapsed from first time entry
+                #calculate time decay from initial event
+                for item in range(len(corpus)):
+                    corpus[item][1] = corpus[item][1] - corpus[0][1]
+                #initial time entry is set to 0
+                corpus[0][1] = 0                
+                
+                #transpose into 2xn from nx2
+                #this way, corpus[0] refers to words and corpus[1] refers to times
+                corpus = list(map(list, zip(*corpus)))                
+                
+                #corpus[0] are the word sequences, 1 x n (variable!) 
+                #n is number of admissions (rows)
+                #d is the number of events
+                X_test.append(np.array(corpus[0]))
+                #corpus[1] are the time sequences, also 1 x n (variable!)
+                t_test.append(np.array(corpus[1]))                
+                #decay_factor is formulated as -lambda (decay) * time elapsed since intial time, an nx1 vector
+                decay_factor = np.array([math.exp(-1 * decay * elapse) for elapse in corpus[1]])
+                
+                #w is elementwise operation on words .* e ^ (decay_factor * time)
+                w = np.multiply(np.array([SG[c] for c in corpus[0]]), decay_factor)
+                W_test.append(w)
+                #add label, which is last item of t in train
+                Y_test.append(t[3])
+                
+            #Y_train = list(map(lambda x: 1 if x[3] ==1 else 0, train))
+            #Y_test = list(map(lambda x: 1 if x[3] ==1 else 0, test))
+
+            #training
+            cnn_d = d_cnn_train()
+            lstm_d = d_lstm_train()
+            
+            max_length = 500
+            X_train = list(map(lambda x: [lib.index(word) for word in x], X_train))
+            X_test = list(map(lambda x: [lib.index(word) for word in x], X_test))
+
+            X_train = sequence.pad_sequences(X_train, maxlen=max_length)
+            X_test = sequence.pad_sequences(X_test, maxlen=max_length)
+
+            cnn = cnn_train()
+            lstm = lstm_train()
+            cnn_d.fit(W_train, Y_train, nb_epoch = 100, batch_size = 64, verbose =0)
+            lstm_d.fit(W_train, Y_train, nb_epoch = 100, batch_size = 64, verbose=0)
+            cnn.fit(X_train, Y_train, nb_epoch=100, batch_size=64, verbose=0)
+            lstm.fit(X_train, Y_train, nb_epoch=100, batch_size=64, verbose=0)
+
+            #testing
+            predictions = cnn_d.predict(X_test)
+            # round predictions
+            predictions = [round(x[0]) for x in predictions]
+            acc = accuracy_score(Y, predictions)
+            f1 = f1_score (Y, predictions)
+            auc = roc_auc_score (Y, predictions)
+            scores = [("Accuracy", acc) , ("F1 Score", f1) , ("AUC Score",auc)]
+            for s in scores:
+                print("%s: %.2f" %(s[0], s[1]))
+
+        data.append(data)
+            
+    return (Data)
+
+##############################
+
+if __name__ == '__main__':
+    from optparse import OptionParser, OptionGroup
+    desc = "Welcome to PipeLiner by af1tang."
+    version = "version 1.0"
+    opt = OptionParser (description = desc, version=version)
+    opt.add_option ('-i', action = 'store', type ='string', dest='input', help='Please input path to Database File.')
+    opt.add_option ('-o', action = 'store', type = 'string', dest='output', default='CHF_data.pickle', help='Please state desired storage file for this session.')
+    (cli, args) = opt.parse_args()
+    opt.print_help()
+    
+    mimic = 'MIMIC3'
+    host = 'illidan-gpu-1.egr.msu.edu'
+    user = 'af1tang'
+    pw = 'illidan'    
+    port = 3306
+    
+    #connect to MySQL using engine to write pandas df --> mysql
+    conn = mysql.connect(host = host, user = user, passwd = pw, db = mimic, port = port)    
+    engine = create_engine ("mysql+pymysql://af1tang:illidan@illidan-gpu-1.egr.msu.edu:3306/MIMIC3")
+    
+    main()  
+    
+    conn.close()
+
+
+
+##### DISEASES ######
+#####################
+
+#1) CHF = ['40201', '40211', '40291', '40401', '40403', '40411', '40413', '40491', '40493', '4280', '428', '4281', '42820', '42822', '42830', '42832', '42840', '42842', '4289']
+#2) Afib = ['42731', '4271', '42789']
+#3) LMyc = ['1629']
+#4) PTEN = ['1830', '193', '2330', '1930']
+#5) Stroke = ['43491', '43411', '4349', '43401', '434', '4340', '43401', '43410','43490'] 
+#6) Sepsis = ['99591', '99592', '0389', '0380','0381', '03811', '03812', '03819', '03810', '0382', '0383', '0384', '0388', '03840', '03841', '03842', '03843', '03844', 03849']
+#7) RF = ['5845','5849','5856', '5846', '5847', '5848', '5851', '5852', '5853', '5854', '5855', '5859']
+#8) Cirrhosis = ['5712','5715']
+#9) T2DM = ['2500', '25000', '25001', '25002', '25003', '2501', '25010', '25011', '25012','25013', '2502', '25020', '25021', '25022', '25023', '25030', '2503', '25031', '25032', '25033', '25040', '25041', '25042', '25043', '2504', '2505', '25050', '25051', '25052', '25053', '2506', '25060', '25061', '25062', '25063', '2507', '25070', '25071', '25072', '25073', '2508', '25080', '25081', '25082', '25083', '2509', '25090', '25091', '25092', '25093']
+#10) CAD = ['414', '4140','41400', '41401', '41402', '41403','41404','41405','41406','41407', '4141', '41410', '41411', '41412', '41419', '4142', '4143', '4144', '4148', '4149']
+#11) ATH = ['4400', '44000', '4401', '44010', '4402', '44020', '4403', '44030', '4404', '44040','4408', '44080', '4409', '44090', '44021', '44022', '44023', '44024', '44029', '44031', '44032']
+#12) ARDS = ['51881', '51884', '51883'] #EXCLUDING trauma/surgery related resp. failure.
+
+##### Scratch Work #####
+########################
+
+#### EMBEDDING #####
+   # corpus = []
+   # count = 0
+    
+    #make patient corpus for disease querying purposes (slow!)
+    #for p in pts:
+    #    df = pd.read_sql("SELECT * from UFM2 where SUBJECT_ID = '%s'" %(p), conn)
+    #    print ("+++++++++++")
+    #    print ("Current Sess: {0}".format(count))
+    #    print ("Preview:")
+    #    print(df.head())
+    #    pt = Patient(ufm_slice = df, library = lib)
+    #    pt.Corpus()
+    #    corpus.append([p, pt.corpus])
+    #    count+=1
+        
+    #make corpus for disease specific purposes (fast!)
+    #keys = [k[1] for k in lib]
+    #count = 0; sentences=  []
+    #for p in pts:
+    #    df = pd.read_sql("SELECT * from UFM2 where SUBJECT_ID = '%s'" %(p), conn)
+    #    print ("Current Sess: {0}".format(count))
+    #    hadm = list(set(df.HADM_ID))
+        #df = df.sort('TIME')
+     #   for h in hadm:
+     #       sentence = []
+     #       for index, row in df[df['HADM_ID']==h].sort('TIME').iterrows():
+     #           word = row['FEATURE']+'_' + str(row['DISCRETE_VALUE'])
+     #           if word in keys: sentence.append(word)
+     #       sentences.append((p, h, sentence))
+     #   count +=1
+
+#### TRAINING ####
+'''    
 def training (X, W, Y):
     np.random.seed(100)
     models = []
@@ -224,21 +508,6 @@ def training (X, W, Y):
     print(model.summary())
     model.fit(W, Y, nb_epoch = 10, batch_size = 1000)
     models.append(("Decay CNN", model))
-    
-    #Non-decay CNN
-    x = sequence.pad_sequences(X)
-    embedding_length = 300
-    model = Sequential()
-    model.add(Embedding(top_words, embedding_length))    
-    model = Sequential()
-    model.add(Convolution1D(nb_filter = 300, filter_length = 3, border_mode = 'same', activation = 'relu'))
-    model.add(MaxPooling1D(pool_length = 2))
-    model.add(LSTM(100))
-    model.add(Dense(1, activation = 'sigmoid'))
-    model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
-    print(model.summary())
-    model.fit(x, Y, nb_epoch = 10, batch_size = 1000)
-    models.append(("Non-decay CNN", model))
     
     #Non-decay CNN with dropouts
     x = sequence.pad_sequences(X)
@@ -263,19 +532,7 @@ def training (X, W, Y):
     print (model.summary())
     model.fit(W, Y, nb_epoch = 10, batch_size = 1000)
     models.append(("Decay LSTM", model))
-    
-    #Non-decay LSTM
-    x = sequence.pad_sequences(X)
-    embedding_length = 300
-    model = Sequential()
-    model.add(Embedding(top_words, embedding_length))
-    model.add(LSTM(100))
-    model.add(Dense(1, activation = 'sigmoid'))
-    model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
-    print (model.summary())
-    model.fit(x, Y, nb_epoch = 10, batch_size = 1000)
-    models.append(("Non-decay LSTM", model))
-    
+       
     #Non-decay LSTM with dropouts
     x = sequence.pad_sequences(X)
     embedding_length = 300
@@ -291,26 +548,11 @@ def training (X, W, Y):
     models.append(("dropout LSTM", model))
 
     return (models)
+'''
 
-def test (X, W, Y, model):
-    pass
-
-def modeling(conn, sentences, dz):
-    #pts = pd.read_sql("SELECT DISTINCT SUBJECT_ID from UFM", conn)
-    #pts =list(set(pts.SUBJECT_ID))
-    #pool = []
-    #for d in dz:
-    #    pool += d.pos + d.neg
-
-    decay = .9
-    data = []; Data = []
-    
-    admits = pd.read_sql("SELECT * from admissions", conn)
-   
-    for d in dz:
-        neg = random.sample(d.neg, len(d.pos))
-        pts = d.pos+neg
-        kf = KFold(n_splits = 5, shuffle = False)
+#### K-FOLD VALIDATION: TOO EXPENSIVE #####
+'''
+        kf = StratifiedKFold(n_splits=5, shuffle=True, random_state=7)
         for train_index, test_index in kf.split(pts):
             #each train, test has format (s, time, hadm, 1/0)
             train, test = pts[train_index], pts[test_index]
@@ -323,7 +565,9 @@ def modeling(conn, sentences, dz):
             
             #word2vec:
             #configure hyperparams as appropriate
+            print ("Making SG...")
             SG = gensim.models.Word2Vec(sentences = lst, sg = 1, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
+            print ("SG embedding complete.")
             #CBOW = gensim.models.Word2Vec(sentences = lst, sg = 0, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
 
             #construct sequence feature from train(ing) set
@@ -409,90 +653,20 @@ def modeling(conn, sentences, dz):
             #Y_test = list(map(lambda x: 1 if x[3] ==1 else 0, test))
 
             #training
-            models = training(X_train, W_train, Y_train)
-            #testing
-            for m in models:
-                data.append(test(X_test, W_test, Y_test, m))
-        Data.append(data)
+            cnn_d = d_cnn_train()
+            lstm_d = d_lstm_train()
             
-    return (Data)
+            max_length = 500
+            X_train = list(map(lambda x: [lib.index(word) for word in x], X_train))
+            X_test = list(map(lambda x: [lib.index(word) for word in x], X_test))
 
-##############################
+            X_train = sequence.pad_sequences(X_train, maxlen=max_length)
+            X_test = sequence.pad_sequences(X_test, maxlen=max_length)
 
-if __name__ == '__main__':
-    from optparse import OptionParser, OptionGroup
-    desc = "Welcome to PipeLiner by af1tang."
-    version = "version 1.0"
-    opt = OptionParser (description = desc, version=version)
-    opt.add_option ('-i', action = 'store', type ='string', dest='input', help='Please input path to Database File.')
-    opt.add_option ('-o', action = 'store', type = 'string', dest='output', default='CHF_data.pickle', help='Please state desired storage file for this session.')
-    (cli, args) = opt.parse_args()
-    opt.print_help()
-    
-    mimic = 'MIMIC3'
-    host = 'illidan-gpu-1.egr.msu.edu'
-    user = 'af1tang'
-    pw = 'illidan'    
-    port = 3306
-    
-    #connect to MySQL using engine to write pandas df --> mysql
-    conn = mysql.connect(host = host, user = user, passwd = pw, db = mimic, port = port)    
-    engine = create_engine ("mysql+pymysql://af1tang:illidan@illidan-gpu-1.egr.msu.edu:3306/MIMIC3")
-    
-    main()  
-    
-    conn.close()
-
-
-
-##### DISEASES ######
-#####################
-
-#1) CHF = ['40201', '40211', '40291', '40401', '40403', '40411', '40413', '40491', '40493', '4280', '428', '4281', '42820', '42822', '42830', '42832', '42840', '42842', '4289']
-#2) Afib = ['42731', '4271', '42789']
-#3) LMyc = ['1629']
-#4) PTEN = ['1830', '193', '2330', '1930']
-#5) Stroke = ['43491', '43411', '4349', '43401', '434', '4340', '43401', '43410','43490'] 
-#6) Sepsis = ['99591', '99592', '0389', '0380','0381', '03811', '03812', '03819', '03810', '0382', '0383', '0384', '0388', '03840', '03841', '03842', '03843', '03844', 03849']
-#7) RF = ['5845','5849','5856', '5846', '5847', '5848', '5851', '5852', '5853', '5854', '5855', '5859']
-#8) Cirrhosis = ['5712','5715']
-#9) T2DM = ['2500', '25000', '25001', '25002', '25003', '2501', '25010', '25011', '25012','25013', '2502', '25020', '25021', '25022', '25023', '25030', '2503', '25031', '25032', '25033', '25040', '25041', '25042', '25043', '2504', '2505', '25050', '25051', '25052', '25053', '2506', '25060', '25061', '25062', '25063', '2507', '25070', '25071', '25072', '25073', '2508', '25080', '25081', '25082', '25083', '2509', '25090', '25091', '25092', '25093']
-#10) CAD = ['414', '4140','41400', '41401', '41402', '41403','41404','41405','41406','41407', '4141', '41410', '41411', '41412', '41419', '4142', '4143', '4144', '4148', '4149']
-#11) ATH = ['4400', '44000', '4401', '44010', '4402', '44020', '4403', '44030', '4404', '44040','4408', '44080', '4409', '44090', '44021', '44022', '44023', '44024', '44029', '44031', '44032']
-#12) ARDS = ['51881', '51884', '51883'] #EXCLUDING trauma/surgery related resp. failure.
-
-##### Scratch Work #####
-########################
-
-#### EMBEDDING #####
-   # corpus = []
-   # count = 0
-    
-    #make patient corpus for disease querying purposes (slow!)
-    #for p in pts:
-    #    df = pd.read_sql("SELECT * from UFM2 where SUBJECT_ID = '%s'" %(p), conn)
-    #    print ("+++++++++++")
-    #    print ("Current Sess: {0}".format(count))
-    #    print ("Preview:")
-    #    print(df.head())
-    #    pt = Patient(ufm_slice = df, library = lib)
-    #    pt.Corpus()
-    #    corpus.append([p, pt.corpus])
-    #    count+=1
-        
-    #make corpus for disease specific purposes (fast!)
-    #keys = [k[1] for k in lib]
-    #count = 0; sentences=  []
-    #for p in pts:
-    #    df = pd.read_sql("SELECT * from UFM2 where SUBJECT_ID = '%s'" %(p), conn)
-    #    print ("Current Sess: {0}".format(count))
-    #    hadm = list(set(df.HADM_ID))
-        #df = df.sort('TIME')
-     #   for h in hadm:
-     #       sentence = []
-     #       for index, row in df[df['HADM_ID']==h].sort('TIME').iterrows():
-     #           word = row['FEATURE']+'_' + str(row['DISCRETE_VALUE'])
-     #           if word in keys: sentence.append(word)
-     #       sentences.append((p, h, sentence))
-     #   count +=1
-        
+            cnn = cnn_train()
+            lstm = lstm_train()
+            cnn_d.fit(W_train, Y_train, nb_epoch = 100, batch_size = 64, verbose =0)
+            lstm_d.fit(W_train, Y_train, nb_epoch = 100, batch_size = 64, verbose=0)
+            cnn.fit(X_train, Y_train, nb_epoch=100, batch_size=64, verbose=0)
+            lstm.fit(X_train, Y_train, nb_epoch=100, batch_size=64, verbose=0)
+'''
