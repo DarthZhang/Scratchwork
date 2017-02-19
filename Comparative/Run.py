@@ -231,42 +231,46 @@ def embedding(conn, lib):
 
 ##### Under Construction #####  
     
-def d_cnn_train(input_shape, batch_input_shape, dropout_W = 0.2, dropout_U = 0.2):
+def d_cnn_train(input_shape, dropout_W = 0.0, dropout_U = 0.5):
     model = Sequential()
-    model.add(Convolution1D(input_shape = input_shape, batch_input_shape = batch_input_shape, nb_filter = 300, filter_length = 3, border_mode = 'same', activation = 'relu'))
+    model.add(Convolution1D(input_shape = input_shape, nb_filter = 300, filter_length = 3, border_mode = 'same', activation = 'relu'))
+    model.add(MaxPooling1D(pool_length = 2))
+    model.add(LSTM(100, dropout_W = dropout_W, dropout_U = dropout_U))
+    model.add(Dense(50, activation = 'relu'))
+    model.add(Dense(25, activation = 'relu'))
+    model.add(Dense(1, activation = 'sigmoid'))
+    model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
+    return (model)
+
+def cnn_train(dropout=0.2, dropout_W = 0.0, dropout_U = 0.5):
+    top_words = 9444
+    embedding_length = 300
+    max_length = 1000
+    model = Sequential()
+    model.add(Embedding(top_words, embedding_length, input_length=max_length))    
+    model.add(Convolution1D(nb_filter = 300, filter_length = 3, border_mode = 'same', activation = 'relu'))
     model.add(MaxPooling1D(pool_length = 2))
     model.add(LSTM(100, dropout_W = dropout_W, dropout_U = dropout_U))
     model.add(Dense(1, activation = 'sigmoid'))
     model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
     return (model)
 
-def cnn_train(dropout=0.2, dropout_W = 0.2, dropout_U = 0.2, weight_constraint = 0):
-    top_words = 9444
-    embedding_length = 300
-    max_length = 1000
+def d_lstm_train(input_shape, dropout_W = 0.0, dropout_U = 0.5):
     model = Sequential()
-    model.add(Embedding(top_words, embedding_length, input_length=max_length, dropout=dropout))    
-    model.add(Convolution1D(nb_filter = 300, filter_length = 3, border_mode = 'same', activation = 'relu'))
-    model.add(MaxPooling1D(pool_length = 2))
-    model.add(LSTM(100, dropout_W = dropout_W, dropout_U = dropout_U, W_constraint = weight_constraint))
+    model.add(LSTM(100, input_shape = input_shape, dropout_W = dropout_W, dropout_U = dropout_U))
+    model.add(Dense(50, activation = 'relu'))
+    model.add(Dense(25, activation = 'relu'))
     model.add(Dense(1, activation = 'sigmoid'))
     model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
     return (model)
 
-def d_lstm_train(input_shape, batch_input_shape, dropout_W = 0.2, dropout_U = 0.2):
-    model = Sequential()
-    model.add(LSTM(100, input_shape = input_shape, batch_input_shape = batch_input_shape, dropout_W = dropout_W, dropout_U = dropout_U))
-    model.add(Dense(1, activation = 'sigmoid'))
-    model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
-    return (model)
-
-def lstm_train(dropout=0.2, dropout_W = 0.2, dropout_U = 0.2, weight_constraint = 0):
+def lstm_train(dropout=0.2, dropout_W = 0.0, dropout_U = 0.5):
     top_words = 9444
     embedding_length = 300
     max_length = 1000
     model = Sequential()
-    model.add(Embedding(top_words, embedding_length, input_length=max_length, dropout=dropout))    
-    model.add(LSTM(100, dropout_W = dropout_W, dropout_U = dropout_U, W_constraint = weight_constraint))
+    model.add(Embedding(top_words, embedding_length, input_length=max_length))    
+    model.add(LSTM(100, dropout_W = dropout_W, dropout_U = dropout_U))
     model.add(Dense(1, activation = 'sigmoid'))
     model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
     return (model)
@@ -322,14 +326,12 @@ def modeling(conn, sentences, lib, dz):
             for t in train:
                 print (count)
                 count+=1
-              
+
                 #corpus is n x 2 tensor with each column containing the words and timing, respectively
                 #only select the admission sequences which occur BEFORE the queried admission
                 corpus = [[s[2], s[3]] for s in sentences if  (s[0] == t[0]) and (pd.to_datetime(admits[admits['HADM_ID']==s[1]].ADMITTIME.values[0]) <= t[1])]
-                
-                #HDF5 version:
-                                
-                
+
+    
                 #order subject by time of entry for each sentence (admission)
                 corpus = sorted(corpus, key = lambda x: x[1])
                 #transpose into nx2xd from 2xnxd
@@ -351,59 +353,59 @@ def modeling(conn, sentences, lib, dz):
                 #initial time entry is set to 0
                 #e.g., corpus[0][1] = 0                
                 #decay_factor = np.array([[math.exp(-1 * decay * elapse.total_seconds()/3600) for elapse in timestrip] for timestrip in corpus[1]])
-
+                
                 #corpus[0] are the word sequences, n x d (variable!) 
                 #n is number of admissions (rows)
                 #d is the number of events
-                x = np.array(list(map(lambda x: keys.index(x), x_train)))
+                #x = np.array(list(map(lambda x: keys.index(x), x_train)))
+                x = np.array(x_train)
                 #max_length
                 if len(x)<1000:
-                    x = np.concatenate(([0]*(1000-len(x)), x))
+                    x = np.concatenate((['0']*(1000-len(x)), x))
+                    t_stamps = np.concatenate(([pd.to_datetime(0)-pd.to_datetime(0)]*(1000-len(x)), t_stamps))
                 elif len(x)>1000:
                     x = x[0:1000]
                     t_stamps = t_stamps[0:1000]
-                
+                    
                 #append
                 if count ==1:
-                    X_train = np.memmap('x_train.mymemmap', mode = 'w+', shape = (1, 1000), dtype='object')
+                    X_train = np.memmap('x_train2.mymemmap', mode = 'w+', shape = (1, 1000), dtype='object')
                     X_train[:] = x[:].reshape((1, 1000))
                 else:
-                    X_train = np.memmap('x_train.mymemmap', mode = 'r+', shape = (count, 1000), dtype='object')
+                    X_train = np.memmap('x_train2.mymemmap', mode = 'r+', shape = (count, 1000), dtype='object')
                     X_train[count-1, : ] = x[:].reshape((1,1000))
 
-                #corpus[1] are the time sequences, also n x d (variable!)
+                   #corpus[1] are the time sequences, also n x d (variable!)
                 t_train.append(np.array(t_stamps))
                 #decay_factor is formulated as -lambda (decay) * time elapsed since intial time, an n x d vector
                 
                 #w is X projected into word vector form
                 #results in n x d x v
                 #w is elementwise operation on word vectors .* e ^ (decay_factor * time)
-                v = np.array(list(map(lambda x: SG[x] if x in SG.wv.vocab else [0]*300, x_train)))
-                w = np.array([np.multiply(v[index], decay_factor[index]) for index in range(len(decay_factor))])
+                #v = np.array(list(map(lambda x: SG[x] if x in SG.wv.vocab else [0]*300, x_train)))
+                #w = np.array([np.multiply(v[index], decay_factor[index]) for index in range(len(decay_factor))])
                 #max_length
-                if len(w)<1000:
-                    temp = np.array([[0]*300 for jjj in range(1000-len(v))])
-                    w = np.concatenate((temp,w))
-                elif len(w) > 1000:
-                    w = w[0:1000]
+                #if len(w)<1000:
+                #    temp = np.array([[0]*300 for jjj in range(1000-len(v))])
+                #    w = np.concatenate((temp,w))
+                #elif len(w) > 1000:
+                #    w = w[0:1000]
                 
                 #append
-                if count == 1:
-                    W_train = np.memmap('w_train.mymemmap', mode = 'w+', shape = (1, w.shape[0], w.shape[1]), dtype = 'object')
-                    W_train[:] = w[:].reshape((1,1000,300))
-                else:
-                    W_train = np.memmap('w_train.mymemmap', mode = 'r+', shape = (count, w.shape[0], w.shape[1]), dtype = 'object')
-                    W_train[count-1:,:] = w[:].reshape((1,1000,300))
+                # if count == 1:
+                #     W_train = np.memmap('w_train.mymemmap', mode = 'w+', shape = (1, w.shape[0], w.shape[1]), dtype = 'object')
+                #       W_train[:] = w[:].reshape((1,1000,300))
+                #   else:
+                #       W_train = np.memmap('w_train.mymemmap', mode = 'r+', shape = (count, w.shape[0], w.shape[1]), dtype = 'object')
+                #       W_train[count-1:,:] = w[:].reshape((1,1000,300))
 
                 #add label, which is last item of t in train
                 Y_train.append(t[3])
-            
-            #pickle this
-            with open ('/home/andy/Desktop/MIMIC/Diseases/CHF_W_train.pkl', 'wb') as f:
-                pickle.dump(W_train, f)
-            
+
+
+
             print ("X_train made.")
-            
+
             count = 0
             for t in test:
                 print (count)
@@ -433,57 +435,85 @@ def modeling(conn, sentences, lib, dz):
                 #initial time entry is set to 0
                 #e.g., corpus[0][1] = 0                
                 #decay_factor = np.array([[math.exp(-1 * decay * elapse.total_seconds()/3600) for elapse in timestrip] for timestrip in corpus[1]])
-
+                
                 #corpus[0] are the word sequences, n x d (variable!) 
                 #n is number of admissions (rows)
                 #d is the number of events
-                x = np.array(list(map(lambda x: keys.index(x), x_test)))
+                #x = np.array(list(map(lambda x: keys.index(x), x_test)))
+                x = np.array(x_test)
                 #max_length
                 if len(x)<1000:
-                    x = np.concatenate(([0]*(1000-len(x)), x))
+                    x = np.concatenate((['0']*(1000-len(x)), x))
+                    t_stamps = np.concatenate(([pd.to_datetime(0)-pd.to_datetime(0)]*(1000-len(x)), t_stamps))
                 elif len(x)>1000:
                     x = x[0:1000]
                     t_stamps = t_stamps[0:1000]
                 #append    
                 if count ==1:
-                    X_test = np.memmap(file_d, mode = 'w+', shape = (1, 1000), dtype='object')
+                    X_test = np.memmap('x_test2.memmap', mode = 'w+', shape = (1, 1000), dtype='object')
                     X_test[:] = x[:].reshape((1, 1000))
                 else:
-                    X_test = np.memmap(file_d, mode = 'r+', shape = (count, 1000), dtype='object')
+                    X_test = np.memmap('x_test2.memmap', mode = 'r+', shape = (count, 1000), dtype='object')
                     X_test[count-1, : ] = x[:].reshape((1,1000))
-                #X_test.append(np.array(x))
+                   #X_test.append(np.array(x))
                 #corpus[1] are the time sequences, also n x d (variable!)
                 t_test.append(np.array(t_stamps))
                 #decay_factor is formulated as -lambda (decay) * time elapsed since intial time, an n x d vector
-                
+
                 #w is X projected into word vector form
                 #results in n x d x v
                 #w is elementwise operation on word vectors .* e ^ (decay_factor * time)
                 v = np.array(list(map(lambda x: SG[x] if x in SG.wv.vocab else [0]*300, x_test)))
                 w = np.array([np.multiply(v[index], decay_factor[index]) for index in range(len(decay_factor))])
-                
-                if len(w)<1000:
-                    temp = np.array([[0]*300 for jjj in range(1000-len(v))])
-                    w = np.concatenate((temp,w))
-                elif len(w) > 1000:
-                    w = w[0:1000]
-                    
+            
+                #if len(w)<1000:
+                #    temp = np.array([[0]*300 for jjj in range(1000-len(v))])
+                #    w = np.concatenate((temp,w))
+                #elif len(w) > 1000:
+                #    w = w[0:1000]
+            
                 if count == 1:
                     W_test = np.memmap(file_e, mode = 'w+', shape = (1, w.shape[0], w.shape[1]), dtype = 'object')
                     W_test[:] = w[:].reshape((1,1000,300))
                 else:
                     W_test = np.memmap(file_e, mode = 'r+', shape = (count, w.shape[0], w.shape[1]), dtype = 'object')
                     W_test[count-1:,:] = w[:].reshape((1,1000,300))
-                #add label, which is last item of t in train
+            #add label, which is last item of t in train
                 Y_test.append(t[3])
                 
-            #Y_train = list(map(lambda x: 1 if x[3] ==1 else 0, train))
-            #Y_test = list(map(lambda x: 1 if x[3] ==1 else 0, test))
-
-            #training
-            cnn_d = d_cnn_train(input_shape = (len(train), 1000, 300), batch_input_shape = (64, 1000, 300))
-            lstm_d = d_lstm_train(input_shape = (len(train), 1000, 300), batch_input_shape = (64, 1000, 300))
+            #making W_train, W_test
+            cnn_d = d_cnn_train(input_shape = (1000, 300))
+            lstm_d = d_lstm_train(input_shape = (1000, 300))
             
+
+            #SG = gensim.models.Word2Vec.load('/home/andy/Desktop/MIMIC/sg_temp')
+            nb_epoch = 10
+            for e in range(nb_epoch):
+                print ("+++++++++++++")
+                print ("Epoch: %d" %e)
+
+                for i in range(0,len(X_train), 128):
+                    if (i+128)>=len(t_train): 
+                        t_stamps = t_train[i:]
+                        x = X_train[i:]
+                        y = Y_train[i:]
+                    else:
+                        t_stamps = t_train[i:i+128]
+                        x = X_train[i:i+128]
+                        y = Y_train[i:i+128]
+    
+                    W_train = []
+                    for ii in range(len(t_stamps)):
+                        decay_factor=np.array([math.exp(-1 * decay * elapse.total_seconds()/3600) for elapse in t_stamps[ii]])
+                        v = np.array(list(map(lambda x: SG[x] if x in SG.wv.vocab else [0]*300, x[ii])))
+                        w = np.array([np.multiply(v[index], decay_factor[index]) for index in range(len(decay_factor))])
+                        W_train.append(w)
+                            
+                    W_train = np.array(W_train)
+                    lstm_d.fit(W_train, y, validation_split = .2,  nb_epoch = 1, verbose = 1)
+                    cnn_d.fit(W_train, y, validation_split = .2,  nb_epoch = 1, verbose= 1)
+          
+            #training normal LSTM and CNN-LSTM            
             max_length = 1000
             #X_train = list(map(lambda x: [keys.index(word) for word in x], X_train))
             #X_test = list(map(lambda x: [keys.index(word) for word in x], X_test))
@@ -492,22 +522,36 @@ def modeling(conn, sentences, lib, dz):
             lstm = lstm_train()
             
             #fit to data
-            cnn_d.fit(W_train, Y_train, nb_epoch = 100, batch_size = 64, verbose =0)
-            lstm_d.fit(W_train, Y_train, nb_epoch = 100, batch_size = 64, verbose=0)
-            cnn.fit(X_train, Y_train, nb_epoch=100, batch_size=64, verbose=0)
-            lstm.fit(X_train, Y_train, nb_epoch=100, batch_size=64, verbose=0)
+            #cnn_d.fit(W_train, Y_train, nb_epoch = 100, batch_size = 64, verbose =1)
+            #lstm_d.fit(W_train, Y_train, nb_epoch = 100, batch_size = 64, verbose=1)
+            cnn.fit(X_train, Y_train, validation_split = .2, nb_epoch=100, batch_size=64, shuffle = True, verbose=1)
+            lstm.fit(X_train, Y_train, validation_split = .2, nb_epoch=100, batch_size=64, shuffle = True, verbose=1)
 
             #testing
-            predictions = cnn_d.predict(X_test)
+            predictions_lstm = lstm.predict(X_test)
+            predictions_cnn = cnn.predict(X_test)
             # round predictions
-            predictions = [round(x[0]) for x in predictions]
-            acc = accuracy_score(Y, predictions)
-            f1 = f1_score (Y, predictions)
-            auc = roc_auc_score (Y, predictions)
-            scores = [("Accuracy", acc) , ("F1 Score", f1) , ("AUC Score",auc)]
-            for s in scores:
-                print("%s: %.2f" %(s[0], s[1]))
+            predictions_lstm = [round(p[0]) for p in predictions_lstm]
+            predictions_cnn = [round(p[0]) for p in predictions_cnn]
+            acc = accuracy_score(Y_test, predictions_lstm)
+            f1 = f1_score (Y_test, predictions_lstm)
+            auc = roc_auc_score (Y_test, predictions_lstm)
+            scores_lstm = [("Accuracy", acc) , ("F1 Score", f1) , ("AUC Score",auc)]
 
+            acc = accuracy_score(Y_test, predictions_cnn)
+            f1 = f1_score (Y_test, predictions_cnn)
+            auc = roc_auc_score (Y_test, predictions_cnn)
+            scores_cnn = [("Accuracy", acc) , ("F1 Score", f1) , ("AUC Score",auc)]
+
+            print ("LSTM DATA: ")
+            for s in scores_lstm:
+                print("%s: %.2f" %(s[0], s[1]), end = " ")
+
+            print ("CNN DATA: ")
+            for s in scores_cnn:
+                print("%s: %.2f" %(s[0], s[1]), end = " ")        
+        
+        
         data.append(data)
             
     return (Data)
@@ -769,4 +813,166 @@ def training (X, W, Y):
             lstm_d.fit(W_train, Y_train, nb_epoch = 100, batch_size = 64, verbose=0)
             cnn.fit(X_train, Y_train, nb_epoch=100, batch_size=64, verbose=0)
             lstm.fit(X_train, Y_train, nb_epoch=100, batch_size=64, verbose=0)
+'''
+
+##### Making W_train and W_test from X_train, X_test #####
+'''
+            count=0
+            for t in train:
+                print (count)
+                count+=1
+              
+                #corpus is n x 2 tensor with each column containing the words and timing, respectively
+                #only select the admission sequences which occur BEFORE the queried admission
+                corpus = [[s[2], s[3]] for s in sentences if  (s[0] == t[0]) and (pd.to_datetime(admits[admits['HADM_ID']==s[1]].ADMITTIME.values[0]) <= t[1])]
+                
+                #HDF5 version:
+                                
+                
+                #order subject by time of entry for each sentence (admission)
+                corpus = sorted(corpus, key = lambda x: x[1])
+                #transpose into nx2xd from 2xnxd
+                #this way, corpus[0] refers to words and corpus[1] refers to times
+                corpus = list(map(list, zip(*corpus)))                  
+                x_train = list(chain.from_iterable(corpus[0]))
+                t_stamps = list(chain.from_iterable(corpus[1]))
+                
+                #configure each timestamp to reflect time elapsed from first time entry
+                #calculate time decay from initial event
+                temp = t_stamps[0]
+                t_stamps = [ii-temp for ii in t_stamps]
+                decay_factor = np.array([math.exp(-1 * decay * elapse.total_seconds()/3600) for elapse in t_stamps])
+                
+                #temp = corpus[0][1][0]
+                #for ii in range(len(corpus)):
+                #    for ij in range(len(corpus[ii][1])):
+                #        corpus[ii][1][ij] = corpus[ii][1][ij] - temp
+                #initial time entry is set to 0
+                #e.g., corpus[0][1] = 0                
+                #decay_factor = np.array([[math.exp(-1 * decay * elapse.total_seconds()/3600) for elapse in timestrip] for timestrip in corpus[1]])
+
+                #corpus[0] are the word sequences, n x d (variable!) 
+                #n is number of admissions (rows)
+                #d is the number of events
+                x = np.array(list(map(lambda x: keys.index(x), x_train)))
+                #max_length
+                if len(x)<1000:
+                    x = np.concatenate(([0]*(1000-len(x)), x))
+                elif len(x)>1000:
+                    x = x[0:1000]
+                    t_stamps = t_stamps[0:1000]
+                
+                #append
+                if count ==1:
+                    X_train = np.memmap('x_train.mymemmap', mode = 'w+', shape = (1, 1000), dtype='object')
+                    X_train[:] = x[:].reshape((1, 1000))
+                else:
+                    X_train = np.memmap('x_train.mymemmap', mode = 'r+', shape = (count, 1000), dtype='object')
+                    X_train[count-1, : ] = x[:].reshape((1,1000))
+
+                #corpus[1] are the time sequences, also n x d (variable!)
+                t_train.append(np.array(t_stamps))
+                #decay_factor is formulated as -lambda (decay) * time elapsed since intial time, an n x d vector
+                
+                #w is X projected into word vector form
+                #results in n x d x v
+                #w is elementwise operation on word vectors .* e ^ (decay_factor * time)
+                v = np.array(list(map(lambda x: SG[x] if x in SG.wv.vocab else [0]*300, x_train)))
+                w = np.array([np.multiply(v[index], decay_factor[index]) for index in range(len(decay_factor))])
+                #max_length
+                if len(w)<1000:
+                    temp = np.array([[0]*300 for jjj in range(1000-len(v))])
+                    w = np.concatenate((temp,w))
+                elif len(w) > 1000:
+                    w = w[0:1000]
+                
+                #append
+                if count == 1:
+                    W_train = np.memmap('w_train.mymemmap', mode = 'w+', shape = (1, w.shape[0], w.shape[1]), dtype = 'object')
+                    W_train[:] = w[:].reshape((1,1000,300))
+                else:
+                    W_train = np.memmap('w_train.mymemmap', mode = 'r+', shape = (count, w.shape[0], w.shape[1]), dtype = 'object')
+                    W_train[count-1:,:] = w[:].reshape((1,1000,300))
+
+                #add label, which is last item of t in train
+                Y_train.append(t[3])
+            
+            #pickle this
+            with open ('/home/andy/Desktop/MIMIC/Diseases/CHF_W_train.pkl', 'wb') as f:
+                pickle.dump(W_train, f)
+            
+            print ("X_train made.")
+            
+            count = 0
+            for t in test:
+                print (count)
+                count+=1
+                #corpus is n x 2 tensor with each column containing the words and timing, respectively
+                #only select the admission sequences which occur BEFORE the queried admission
+                corpus = [[s[2], s[3]] for s in sentences if  (s[0] == t[0]) and (pd.to_datetime(admits[admits['HADM_ID']==s[1]].ADMITTIME.values[0]) <= t[1])]
+                
+                #order subject by time of entry for each sentence (admission)
+                corpus = sorted(corpus, key = lambda x: x[1])
+                #transpose into nx2xd from 2xnxd
+                #this way, corpus[0] refers to words and corpus[1] refers to times
+                corpus = list(map(list, zip(*corpus)))                  
+                x_test = list(chain.from_iterable(corpus[0]))
+                t_stamps = list(chain.from_iterable(corpus[1]))
+                
+                #configure each timestamp to reflect time elapsed from first time entry
+                #calculate time decay from initial event
+                temp = t_stamps[0]
+                t_stamps = [ii-temp for ii in t_stamps]
+                decay_factor = np.array([math.exp(-1 * decay * elapse.total_seconds()/3600) for elapse in t_stamps])
+                
+                #temp = corpus[0][1][0]
+                #for ii in range(len(corpus)):
+                #    for ij in range(len(corpus[ii][1])):
+                #        corpus[ii][1][ij] = corpus[ii][1][ij] - temp
+                #initial time entry is set to 0
+                #e.g., corpus[0][1] = 0                
+                #decay_factor = np.array([[math.exp(-1 * decay * elapse.total_seconds()/3600) for elapse in timestrip] for timestrip in corpus[1]])
+
+                #corpus[0] are the word sequences, n x d (variable!) 
+                #n is number of admissions (rows)
+                #d is the number of events
+                x = np.array(list(map(lambda x: keys.index(x), x_test)))
+                #max_length
+                if len(x)<1000:
+                    x = np.concatenate(([0]*(1000-len(x)), x))
+                elif len(x)>1000:
+                    x = x[0:1000]
+                    t_stamps = t_stamps[0:1000]
+                #append    
+                if count ==1:
+                    X_test = np.memmap('x_test.memmap', mode = 'w+', shape = (1, 1000), dtype='object')
+                    X_test[:] = x[:].reshape((1, 1000))
+                else:
+                    X_test = np.memmap('x_test.memmap', mode = 'r+', shape = (count, 1000), dtype='object')
+                    X_test[count-1, : ] = x[:].reshape((1,1000))
+                #X_test.append(np.array(x))
+                #corpus[1] are the time sequences, also n x d (variable!)
+                t_test.append(np.array(t_stamps))
+                #decay_factor is formulated as -lambda (decay) * time elapsed since intial time, an n x d vector
+                
+                #w is X projected into word vector form
+                #results in n x d x v
+                #w is elementwise operation on word vectors .* e ^ (decay_factor * time)
+                v = np.array(list(map(lambda x: SG[x] if x in SG.wv.vocab else [0]*300, x_test)))
+                w = np.array([np.multiply(v[index], decay_factor[index]) for index in range(len(decay_factor))])
+                
+                if len(w)<1000:
+                    temp = np.array([[0]*300 for jjj in range(1000-len(v))])
+                    w = np.concatenate((temp,w))
+                elif len(w) > 1000:
+                    w = w[0:1000]
+                    
+                if count == 1:
+                    W_test = np.memmap(file_e, mode = 'w+', shape = (1, w.shape[0], w.shape[1]), dtype = 'object')
+                    W_test[:] = w[:].reshape((1,1000,300))
+                else:
+                    W_test = np.memmap(file_e, mode = 'r+', shape = (count, w.shape[0], w.shape[1]), dtype = 'object')
+                    W_test[count-1:,:] = w[:].reshape((1,1000,300))
+                #add label, which is last item of t in train
+                Y_test.append(t[3])
 '''
