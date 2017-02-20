@@ -1,3 +1,9 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Jan 17 16:38:42 2017
+
+@author: andy
+"""
 
 import sys
 import pickle
@@ -77,8 +83,9 @@ def main():
     
     flags = make_database(conn)
     lib = discretize(conn, flags)
-    CHF, Afib, STROKE, SEPSIS, RF, CIRRHOSIS, T2DM, CAD, ATH, ARDS = querying(conn)
-    dz = [CHF, Afib, STROKE, SEPSIS, RF, CIRRHOSIS, T2DM, CAD, ATH, ARDS]
+    #CHF, Afib, STROKE, SEPSIS, RF, CIRRHOSIS, T2DM, CAD, ATH, ARDS = querying(conn)
+    #dz = [CHF, Afib, STROKE, SEPSIS, RF, CIRRHOSIS, T2DM, CAD, ATH, ARDS]
+    dz = querying (conn)
     sentences = embedding(conn, lib)
     modeling(conn, sentences, lib, dz)
 
@@ -179,8 +186,13 @@ def querying(conn):
     CAD.readmission(); print ("{0} done.".format(CAD))
     ATH.readmission(); print ("{0} done.".format(ATH))
     ARDS.readmission(); print ("{0} done.".format(ARDS))
-    return (CHF, Afib, STROKE, SEPSIS, RF, CIRRHOSIS, T2DM, CAD, ATH, ARDS)
     
+    d=[]
+    d.append((ATH.pos, ATH.neg))
+    d.append((T2DM.pos, T2DM.neg))
+    d.append((Afib.pos, Afib.neg)); d.append((ARDS.pos, ARDS.neg)); d.append((CAD.pos, CAD.neg)); d.append((CHF.pos, CHF.neg)); d.append((STROKE.pos, STROKE.neg)); d.append((CIRRHOSIS.pos, CIRRHOSIS.neg)); d.append((RF.pos, RF.neg)); d.append((SEPSIS.pos, SEPSIS.neg))
+    #return (CHF, Afib, STROKE, SEPSIS, RF, CIRRHOSIS, T2DM, CAD, ATH, ARDS)
+    return (d)
 
 def embedding(conn, lib):
     pts = pd.read_sql("SELECT DISTINCT SUBJECT_ID from UFM", conn)
@@ -225,39 +237,39 @@ def embedding(conn, lib):
 
 ##### Under Construction #####  
     
-def d_cnn_train(input_shape, dropout_W = 0.0, dropout_U = 0.5):
+def d_cnn_train(input_shape, dropout_W = 0.2, dropout_U = 0.2):
     model = Sequential()
     model.add(Convolution1D(input_shape = input_shape, nb_filter = 300, filter_length = 3, border_mode = 'same', activation = 'relu'))
     model.add(MaxPooling1D(pool_length = 2))
     model.add(LSTM(100, dropout_W = dropout_W, dropout_U = dropout_U))
-    model.add(Dense(50, activation = 'relu'))
-    model.add(Dense(25, activation = 'relu'))
+    #model.add(Dense(50, activation = 'relu'))
+    #model.add(Dense(25, activation = 'relu'))
     model.add(Dense(1, activation = 'sigmoid'))
     model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
     return (model)
 
-def cnn_train(top_words, max_length, embedding_length, dropout_W = 0.0, dropout_U = 0.5):
+def cnn_train(top_words, max_length, embedding_length, dropout_W = 0.2, dropout_U = 0.2):
     model = Sequential()
     model.add(Embedding(top_words, embedding_length, input_length=max_length))    
     model.add(Convolution1D(nb_filter = 300, filter_length = 3, border_mode = 'same', activation = 'relu'))
     model.add(MaxPooling1D(pool_length = 2))
     model.add(LSTM(100, dropout_W = dropout_W, dropout_U = dropout_U))
-    model.add(Dense(50, activation = 'relu'))
-    model.add(Dense(25, activation = 'relu'))
+    #model.add(Dense(50, activation = 'relu'))
+    #model.add(Dense(25, activation = 'relu'))
     model.add(Dense(1, activation = 'sigmoid'))
     model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
     return (model)
 
-def d_lstm_train(input_shape, dropout_W = 0.0, dropout_U = 0.5):
+def d_lstm_train(input_shape, dropout_W = 0.2, dropout_U = 0.2):
     model = Sequential()
     model.add(LSTM(100, input_shape = input_shape, dropout_W = dropout_W, dropout_U = dropout_U))
-    model.add(Dense(50, activation = 'relu'))
-    model.add(Dense(25, activation = 'relu'))
+    #model.add(Dense(50, activation = 'relu'))
+    #model.add(Dense(25, activation = 'relu'))
     model.add(Dense(1, activation = 'sigmoid'))
     model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
     return (model)
 
-def lstm_train(top_words, max_length, embedding_length, dropout_W = 0.0, dropout_U = 0.5):
+def lstm_train(top_words, max_length, embedding_length, dropout_W = 0.2, dropout_U = 0.2):
     #top_words = 9444
     #embedding_length = 300
     #max_length = 1000
@@ -280,166 +292,161 @@ def modeling(conn, sentences, lib, dz):
     #    pool += d.pos + d.neg
     np.random.seed(7)
     decay = .0002
-    data = []
+    data = []; train = []; test = []
     keys = [k[1] for k in lib]
     top_words = 9444
     max_review_length = 500
     embedding_length = 300
     
     admits = pd.read_sql("SELECT * from admissions", conn)
-   
-    for d in dz:    
-        for itr in range(0,5):
-            print ("Sess: {0}".format(itr))
-            neg = random.sample(d.neg, len(d.pos))
-            pts = d.pos+neg
-        
-            random.shuffle(pts)
-            print ("Trial number: {0}".format(itr))
-        
-            train, test= cross_validation.train_test_split(pts, test_size = .2)
-            #each train, test has format (s, time, hadm, 1/0)
-            
-            #make exclusion list for test patients
-            introns = [t[0] for t in test]
-            #instance = [t[2] for t in test]
-            #sentences have format (s, hadm, [words], [times])
-            lst = [i[2] for i in sentences if i[0] not in introns]
-            
-            #lst = list(~df[df.SUBJECT_ID.isin(introns)].SUBJECT_ID)
-            #word2vec:
-            #configure hyperparams as appropriate
-            print ("Making SG...")
-            SG = gensim.models.Word2Vec(sentences = lst, sg = 1, size = embedding_length, window = 10, min_count = 50, hs = 1, negative = 0, workers = 4)
-            print ("SG embedding complete.")
-            #CBOW = gensim.models.Word2Vec(sentences = lst, sg = 0, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
-
-            #construct sequence feature from train(ing) set
-            #X stands for raw feature input
-            #W stands for word vectors from feature input trained by Word2Vec
-            X_train = []; t_train = []; W_train = []; Y_train = []
-            X_test = []; t_test = []; W_test = []; Y_test = []
-            V_train = []; V_test = []
     
-            count=0
-            for t in train:
-                print (count)
-                count+=1
-
-                corpus = [[s[2], s[3]] for s in sentences if  (s[0] == t[0]) and (pd.to_datetime(admits[admits['HADM_ID']==s[1]].ADMITTIME.values[0]) <= t[1])]
-                #order subject by time of entry for each sentence (admission)
-                corpus = sorted(corpus, key = lambda x: x[1])
-                #transpose into nx2xd from 2xnxd
-                #this way, corpus[0] refers to words and corpus[1] refers to times
-                corpus = list(map(list, zip(*corpus)))                  
-                x_train = list(chain.from_iterable(corpus[0]))
-                t_stamps = list(chain.from_iterable(corpus[1]))
-                x = np.array(list(map(lambda x: keys.index(x), x_train)))
-
-                
-                #configure each timestamp to reflect time elapsed from first time entry
-                #calculate time decay from initial event
-                temp = t_stamps[0]
-                t_stamps = [ii-temp for ii in t_stamps]
-                
-                #append
-                X_train.append(x)
-                V_train.append(np.array(x_train))
-                t_train.append(np.array(t_stamps))
-                Y_train.append(t[3])
-                
-            print ("X_train made.")
-
-            count = 0
-            for t in test:
-                print (count)
-                count+=1
-                
-                corpus = [[s[2], s[3]] for s in sentences if  (s[0] == t[0]) and (pd.to_datetime(admits[admits['HADM_ID']==s[1]].ADMITTIME.values[0]) <= t[1])]
-                
-                corpus = sorted(corpus, key = lambda x: x[1])
-                corpus = list(map(list, zip(*corpus)))                  
-                x_test = list(chain.from_iterable(corpus[0]))
-                t_stamps = list(chain.from_iterable(corpus[1]))
-                temp = t_stamps[0]
-                t_stamps = [ii-temp for ii in t_stamps]
-                x = np.array(list(map(lambda x: keys.index(x), x_test)))
-                
-                X_test.append(x)
-                V_test.append(np.array(x_train))
-                t_test.append(np.array(t_stamps))
-                Y_test.append(t[3])            
-                
-                
-            #making W_train, W_test
-            cnn_d = d_cnn_train(input_shape = (max_review_length, embedding_length))
-            lstm_d = d_lstm_train(input_shape = (max_review_length, embedding_length))
-
-            #SG = gensim.models.Word2Vec.load('/home/andy/Desktop/MIMIC/sg_temp')
-            nb_epoch = 5
-            for e in range(nb_epoch):
-                print ("+++++++++++++")
-                print ("Epoch: %d" %e)
-                
-                for i in range(0,len(V_train), 128):
-                    if (i+128)>=len(t_train): 
-                        t_stamps = t_train[i:]
-                        x = V_train[i:]
-                        y = Y_train[i:]
-                    else:
-                        t_stamps = t_train[i:i+128]
-                        x = V_train[i:i+128]
-                        y = Y_train[i:i+128]
+    for itr in range(0,5):
+        print ("Sess: {0}".format(itr))
+        for d in dz:
+            neg = random.sample(d[1], len(d[0]))
+            temp = d[0] + neg
+            random.shuffle(temp)
+            t1, t2 = cross_validation.train_test_split(temp, test_size = .2)
+            train +=t1; test +=t2
+                    
+        #make exclusion list for test patients
+        introns = [t[0] for t in test]
+        #instance = [t[2] for t in test]
+        #sentences have format (s, hadm, [words], [times])
+        lst = [i[2] for i in sentences if i[0] not in introns]
+            
+        #lst = list(~df[df.SUBJECT_ID.isin(introns)].SUBJECT_ID)
+        #word2vec:
+        #configure hyperparams as appropriate
+        print ("Making SG...")
+        SG = gensim.models.Word2Vec(sentences = lst, sg = 1, size = embedding_length, window = 10, min_count = 50, hs = 1, negative = 0, workers = 4)
+        print ("SG embedding complete.")
+        #CBOW = gensim.models.Word2Vec(sentences = lst, sg = 0, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
+        #construct sequence feature from train(ing) set
+        #X stands for raw feature input
+        #W stands for word vectors from feature input trained by Word2Vec
+        X_train = []; t_train = []; W_train = []; Y_train = []
+        X_test = []; t_test = []; W_test = []; Y_test = []
+        V_train = []; V_test = []
     
-                    W_train = []
-                    for ii in range(len(t_stamps)):
-                        decay_factor=np.array([math.exp(-1 * decay * elapse.total_seconds()/3600) for elapse in t_stamps[ii]])
-                        v = np.array(list(map(lambda x: SG[x] if x in SG.wv.vocab else [0]*embedding_length, x[ii])))
-                        w = np.array([np.multiply(v[index], decay_factor[index]) for index in range(len(decay_factor))])
-                        if w.shape[0]<max_review_length:
-                            temp = np.array([[0]*embedding_length for jjj in range(max_review_length-len(v))])
-                            w = np.concatenate((w,temp))
-                        elif len(w) > max_review_length:
-                            w = w[0:max_review_length]
-                        W_train.append(w)
-                            
-                    W_train = np.array(W_train)
-                    lstm_d.fit(W_train, y, validation_split = .2,  nb_epoch = 5, verbose = 1)
-                    cnn_d.fit(W_train, y, validation_split = .2,  nb_epoch = 5, verbose= 1)
+        count=0
+        for t in train:
+            print (count)
+            count+=1
+
+            corpus = [[s[2], s[3]] for s in sentences if  (s[0] == t[0]) and (pd.to_datetime(admits[admits['HADM_ID']==s[1]].ADMITTIME.values[0]) <= t[1])]
+            #order subject by time of entry for each sentence (admission)
+            corpus = sorted(corpus, key = lambda x: x[1])
+            #transpose into nx2xd from 2xnxd
+            #this way, corpus[0] refers to words and corpus[1] refers to times
+            corpus = list(map(list, zip(*corpus)))                  
+            x_train = list(chain.from_iterable(corpus[0]))
+            t_stamps = list(chain.from_iterable(corpus[1]))
+            x = np.array(list(map(lambda x: keys.index(x), x_train)))
+     
+            #configure each timestamp to reflect time elapsed from first time entry
+            #calculate time decay from initial event
+            temp = t_stamps[0]
+            t_stamps = [ii-temp for ii in t_stamps]
+                
+            #append
+            X_train.append(x)
+            V_train.append(np.array(x_train))
+            t_train.append(np.array(t_stamps))
+            Y_train.append(t[3])
+                
+        print ("X_train made.")
+
+        count = 0
+        for t in test:
+            print (count)
+            count+=1
+                
+            corpus = [[s[2], s[3]] for s in sentences if  (s[0] == t[0]) and (pd.to_datetime(admits[admits['HADM_ID']==s[1]].ADMITTIME.values[0]) <= t[1])]
+                
+            corpus = sorted(corpus, key = lambda x: x[1])
+            corpus = list(map(list, zip(*corpus)))                  
+            x_test = list(chain.from_iterable(corpus[0]))
+            t_stamps = list(chain.from_iterable(corpus[1]))
+            temp = t_stamps[0]
+            t_stamps = [ii-temp for ii in t_stamps]
+            x = np.array(list(map(lambda x: keys.index(x), x_test)))
+            
+            X_test.append(x)
+            V_test.append(np.array(x_train))
+            t_test.append(np.array(t_stamps))
+            Y_test.append(t[3])            
+            
+                
+        #making W_train, W_test
+        cnn_d = d_cnn_train(input_shape = (max_review_length, embedding_length))
+        lstm_d = d_lstm_train(input_shape = (max_review_length, embedding_length))
+
+        #SG = gensim.models.Word2Vec.load('/home/andy/Desktop/MIMIC/sg_temp')
+        nb_epoch = 5
+        for e in range(nb_epoch):
+            print ("+++++++++++++")
+            print ("Epoch: %d" %e)
+            
+            for i in range(0,len(V_train), 128):
+                if (i+128)>=len(t_train): 
+                    t_stamps = t_train[i:]
+                    x = V_train[i:]
+                    y = Y_train[i:]
+                else:
+                    t_stamps = t_train[i:i+128]
+                    x = V_train[i:i+128]
+                    y = Y_train[i:i+128]
+
+                W_train = []
+                for ii in range(len(t_stamps)):
+                    decay_factor=np.array([math.exp(-1 * decay * elapse.total_seconds()/3600) for elapse in t_stamps[ii]])
+                    v = np.array(list(map(lambda x: SG[x] if x in SG.wv.vocab else [0]*embedding_length, x[ii])))
+                    w = np.array([np.multiply(v[index], decay_factor[index]) for index in range(len(decay_factor))])
+                    if w.shape[0]<max_review_length:
+                        temp = np.array([[0]*embedding_length for jjj in range(max_review_length-len(v))])
+                        w = np.concatenate((w,temp))
+                    elif len(w) > max_review_length:
+                        w = w[0:max_review_length]
+                    W_train.append(w)
+                    
+                W_train = np.array(W_train)
+                lstm_d.fit(W_train, y, validation_split = .2,  nb_epoch = 5, verbose = 1)
+                cnn_d.fit(W_train, y, validation_split = .2,  nb_epoch = 5, verbose= 1)
           
-            #training normal LSTM and CNN-LSTM            
-            X_train = sequence.pad_sequences(X_train, maxlen=max_review_length)
-            X_test = sequence.pad_sequences(X_test, maxlen=max_review_length)
-            #X_train = list(map(lambda x: [keys.index(word) for word in x], X_train))
-            #X_test = list(map(lambda x: [keys.index(word) for word in x], X_test))
+        #training normal LSTM and CNN-LSTM            
+        X_train = sequence.pad_sequences(X_train, maxlen=max_review_length)
+        X_test = sequence.pad_sequences(X_test, maxlen=max_review_length)
+        #X_train = list(map(lambda x: [keys.index(word) for word in x], X_train))
+        #X_test = list(map(lambda x: [keys.index(word) for word in x], X_test))
 
-            cnn = cnn_train(top_words = top_words, max_length = max_review_length, embedding_length=embedding_length)
-            lstm = lstm_train(top_words = top_words, max_length = max_review_length, embedding_length=embedding_length)
+        cnn = cnn_train(top_words = top_words, max_length = max_review_length, embedding_length=embedding_length)
+        lstm = lstm_train(top_words = top_words, max_length = max_review_length, embedding_length=embedding_length)
             
-            cnn.fit(X_train, Y_train, validation_split = .2, nb_epoch=10, batch_size=128, shuffle = True, verbose=1)
-            lstm.fit(X_train, Y_train, validation_split = .2, nb_epoch=10, batch_size=128, shuffle = True, verbose=1)
+        cnn.fit(X_train, Y_train, validation_split = .2, nb_epoch=10, batch_size=128, shuffle = True, verbose=1)
+        lstm.fit(X_train, Y_train, validation_split = .2, nb_epoch=10, batch_size=128, shuffle = True, verbose=1)
 
-            #testing
-            predictions_lstm = lstm.predict_classes(X_test)
-            predictions_cnn = cnn.predict_classes(X_test)
+        #testing
+        predictions_lstm = lstm.predict_classes(X_test)
+        predictions_cnn = cnn.predict_classes(X_test)
 
-            acc = accuracy_score(Y_test, predictions_lstm)
-            f1 = f1_score (Y_test, predictions_lstm)
-            auc = roc_auc_score (Y_test, predictions_lstm)
-            scores_lstm = [("Accuracy", acc) , ("F1 Score", f1) , ("AUC Score",auc)]
+        acc = accuracy_score(Y_test, predictions_lstm)
+        f1 = f1_score (Y_test, predictions_lstm)
+        auc = roc_auc_score (Y_test, predictions_lstm)
+        scores_lstm = [("Accuracy", acc) , ("F1 Score", f1) , ("AUC Score",auc)]
 
-            acc = accuracy_score(Y_test, predictions_cnn)
-            f1 = f1_score (Y_test, predictions_cnn)
-            auc = roc_auc_score (Y_test, predictions_cnn)
-            scores_cnn = [("Accuracy", acc) , ("F1 Score", f1) , ("AUC Score",auc)]
+        acc = accuracy_score(Y_test, predictions_cnn)
+        f1 = f1_score (Y_test, predictions_cnn)
+        auc = roc_auc_score (Y_test, predictions_cnn)
+        scores_cnn = [("Accuracy", acc) , ("F1 Score", f1) , ("AUC Score",auc)]
 
-            print ("LSTM DATA: ")
-            for s in scores_lstm:
-                print("%s: %.2f" %(s[0], s[1]), end = " ")
-            print ("")
-            print ("CNN DATA: ")
-            for s in scores_cnn:
-                print("%s: %.2f" %(s[0], s[1]), end = " ")        
+        print ("LSTM DATA: ")
+        for s in scores_lstm:
+            print("%s: %.2f" %(s[0], s[1]), end = " ")
+        print ("")
+        print ("CNN DATA: ")
+        for s in scores_cnn:
+            print("%s: %.2f" %(s[0], s[1]), end = " ")        
         
         
         data.append(data)
