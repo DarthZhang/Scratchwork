@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Jan 17 16:38:42 2017
-
-@author: andy
-"""
-
 import sys
 import pickle
 import os.path as path
@@ -48,6 +41,8 @@ from keras.models import Sequential
 from keras.layers import Dense, LSTM, Dropout
 from keras.layers.convolutional import Convolution1D, MaxPooling1D
 from keras.layers.embeddings import Embedding
+from keras.optimizers import SGD, RMSprop, Adam
+from keras.regularizers import l1, l2
 
 #MEMMAP
 from tempfile import mkdtemp
@@ -248,18 +243,6 @@ def d_cnn_train(input_shape, dropout_W = 0.2, dropout_U = 0.2):
     model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
     return (model)
 
-def cnn_train(top_words, max_length, embedding_length, dropout_W = 0.2, dropout_U = 0.2):
-    model = Sequential()
-    model.add(Embedding(top_words, embedding_length, input_length=max_length))    
-    model.add(Convolution1D(nb_filter = 300, filter_length = 3, border_mode = 'same', activation = 'relu'))
-    model.add(MaxPooling1D(pool_length = 2))
-    model.add(LSTM(100, dropout_W = dropout_W, dropout_U = dropout_U))
-    #model.add(Dense(50, activation = 'relu'))
-    #model.add(Dense(25, activation = 'relu'))
-    model.add(Dense(1, activation = 'sigmoid'))
-    model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
-    return (model)
-
 def d_lstm_train(input_shape, dropout_W = 0.2, dropout_U = 0.2):
     model = Sequential()
     model.add(LSTM(100, input_shape = input_shape, dropout_W = dropout_W, dropout_U = dropout_U))
@@ -268,18 +251,42 @@ def d_lstm_train(input_shape, dropout_W = 0.2, dropout_U = 0.2):
     model.add(Dense(1, activation = 'sigmoid'))
     model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
     return (model)
-
-def lstm_train(top_words, max_length, embedding_length, dropout_W = 0.2, dropout_U = 0.2):
+    
+def cnn_train(top_words, max_length, embedding_length, dropout_W = 0.2, dropout_U = 0.2, optimizer = 'Adam', neurons = 100, learn_rate = .01, momentum= 0.0, W_regularizer = None, U_regularizer = None, init_mode = 'zero'):
+    model = Sequential()
+    model.add(Embedding(top_words, embedding_length, input_length=max_length, init = init_mode))    
+    model.add(Convolution1D(nb_filter = 300, filter_length = 3, border_mode = 'same', activation = 'relu'))
+    model.add(MaxPooling1D(pool_length = 2))
+    model.add(LSTM(output_dim=neurons, dropout_W = dropout_W, dropout_U = dropout_U, W_regularizer = W_regularizer, U_regularizer = U_regularizer))
+    #model.add(Dense(50, activation = 'relu'))
+    #model.add(Dense(25, activation = 'relu'))
+    model.add(Dense(1, activation = 'sigmoid'))
+    if optimizer == 'SGD':
+        optimizer = SGD(lr = learn_rate, momentum = momentum)
+    elif optimizer == 'RMSprop':
+        optimizer = RMSprop(lr = learn_rate)
+    elif optimizer == 'Adam':
+        optimizer = Adam(lr=learn_rate)
+    model.compile(loss = 'binary_crossentropy', optimizer = optimizer, metrics = ['accuracy'])
+    return (model)
+    
+def lstm_train(top_words, max_length, embedding_length, dropout_W = 0.2, dropout_U = 0.2, optimizer = 'adam', neurons = 100, learn_rate = .01, momentum= 0.0, W_regularizer = None, U_regularizer = None, init_mode = 'zero'):
     #top_words = 9444
     #embedding_length = 300
     #max_length = 1000
     model = Sequential()
     model.add(Embedding(top_words, embedding_length, input_length=max_length))    
-    model.add(LSTM(100, dropout_W = dropout_W, dropout_U = dropout_U))
-    model.add(Dense(50, activation = 'relu'))
-    model.add(Dense(25, activation = 'relu'))
+    model.add(LSTM(output_dim=neurons, dropout_W = dropout_W, dropout_U = dropout_U, W_regularizer = W_regularizer, U_regularizer = U_regularizer))
+    #model.add(Dense(50, activation = 'relu'))
+    #model.add(Dense(25, activation = 'relu'))
     model.add(Dense(1, activation = 'sigmoid'))
-    model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
+    if optimizer == 'SGD':
+        optimizer = SGD(lr = learn_rate, momentum = momentum)
+    elif optimizer == 'RMSprop':
+        optimizer = RMSprop(lr = learn_rate)
+    elif optimizer == 'Adam':
+        optimizer = Adam(lr=learn_rate)
+    model.compile(loss = 'binary_crossentropy', optimizer = optimizer, metrics = ['accuracy'])
     return (model)
     
 def modeling(conn, sentences, lib, dz):
@@ -294,9 +301,6 @@ def modeling(conn, sentences, lib, dz):
     decay = .0002
     data = []; train = []; test = []
     keys = [k[1] for k in lib]
-    top_words = 9444
-    max_review_length = 500
-    embedding_length = 300
     
     admits = pd.read_sql("SELECT * from admissions", conn)
     
@@ -309,21 +313,7 @@ def modeling(conn, sentences, lib, dz):
             t1, t2 = cross_validation.train_test_split(temp, test_size = .2)
             train +=t1; test +=t2
                     
-        #make exclusion list for test patients
-        introns = [t[0] for t in test]
-        #instance = [t[2] for t in test]
-        #sentences have format (s, hadm, [words], [times])
-        lst = [i[2] for i in sentences if i[0] not in introns]
-            
-        #lst = list(~df[df.SUBJECT_ID.isin(introns)].SUBJECT_ID)
-        #word2vec:
-        #configure hyperparams as appropriate
-        print ("Making SG...")
-        SG = gensim.models.Word2Vec(sentences = lst, sg = 1, size = embedding_length, window = 10, min_count = 50, hs = 1, negative = 0, workers = 4)
-        print ("SG embedding complete.")
-        #CBOW = gensim.models.Word2Vec(sentences = lst, sg = 0, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
-        #construct sequence feature from train(ing) set
-        #X stands for raw feature input
+        #X stands for raw indexes of feature input; V stands for raw feature input
         #W stands for word vectors from feature input trained by Word2Vec
         X_train = []; t_train = []; W_train = []; Y_train = []
         X_test = []; t_test = []; W_test = []; Y_test = []
@@ -377,7 +367,21 @@ def modeling(conn, sentences, lib, dz):
             t_test.append(np.array(t_stamps))
             Y_test.append(t[3])            
             
-                
+####### DECAY STEP ##############      
+        #make exclusion list for test patients
+        introns = [t[0] for t in test]
+        #instance = [t[2] for t in test]
+        #sentences have format (s, hadm, [words], [times])
+        lst = [i[2] for i in sentences if i[0] not in introns]
+            
+        #lst = list(~df[df.SUBJECT_ID.isin(introns)].SUBJECT_ID)
+        #word2vec:
+        #configure hyperparams as appropriate
+        print ("Making SG...")
+        SG = gensim.models.Word2Vec(sentences = lst, sg = 1, size = embedding_length, window = 10, min_count = 50, hs = 1, negative = 0, workers = 4)
+        print ("SG embedding complete.")
+        #CBOW = gensim.models.Word2Vec(sentences = lst, sg = 0, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
+        #construct sequence feature from train(ing) set
         #making W_train, W_test
         cnn_d = d_cnn_train(input_shape = (max_review_length, embedding_length))
         lstm_d = d_lstm_train(input_shape = (max_review_length, embedding_length))
@@ -413,18 +417,74 @@ def modeling(conn, sentences, lib, dz):
                 W_train = np.array(W_train)
                 lstm_d.fit(W_train, y, validation_split = .2,  nb_epoch = 5, verbose = 1)
                 cnn_d.fit(W_train, y, validation_split = .2,  nb_epoch = 5, verbose= 1)
-          
-        #training normal LSTM and CNN-LSTM            
-        X_train = sequence.pad_sequences(X_train, maxlen=max_review_length)
-        X_test = sequence.pad_sequences(X_test, maxlen=max_review_length)
-        #X_train = list(map(lambda x: [keys.index(word) for word in x], X_train))
-        #X_test = list(map(lambda x: [keys.index(word) for word in x], X_test))
+##########################################
+                
+        #training normal LSTM and CNN-LSTM          
+        top_words = [9444]
+        max_review_length = [1000]
+        embedding_length = [300]          
+        X_train = sequence.pad_sequences(X_train, maxlen=max_review_length[0])
+        X_test = sequence.pad_sequences(X_test, maxlen=max_review_length[0])
 
+
+        #build model using KerasClassifier and Gridsearch
+        cnn = KerasClassifier(build_fn=cnn_train, verbose=1)
+        lstm = KerasClassifier(build_fn=lstm_train, verbose=1)
+        # define the grid search parameters
+
+        batch_size = [32, 64, 128]
+        epochs = [20, 50, 100]
+        optimizer = ['SGD', 'RMSprop', 'Adam']
+        learn_rate = [0.00001, 0.0001, 0.001]
+        momentum = [0.0, 0.2, 0.4, 0.6, 0.8, 0.9]
+        neurons = [50, 100, 200]
+        dropout_W = [.1, .2, .5]
+        dropout_U = [.1, .2, .5]
+        W_regularizer = [l1(.0001), l1(.001), l1(.01), l2(.0001), l2(.001), l2(.01), None]
+        U_regularizer = [l1(.0001), l1(.001), l1(.01), l2(.0001), l2(.001), l2(.01), None]
+        init_mode = ['uniform', 'normal', 'zero']
+        #activation = ['softmax', 'softplus', 'softsign', 'relu', 'tanh', 'sigmoid', 'hard_sigmoid', 'linear']
+        param_grid = dict(top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size=batch_size, nb_epoch=epochs, optimizer = optimizer, learn_rate = learn_rate, momentum = momentum, neurons = neurons, dropout_W = dropout_W, dropout_U = dropout_U, W_regularizer = W_regularizer, U_regularizer = U_regularizer, init_mode = init_mode)
+            
+        #setup GridSearch w/ cross validation
+        cnn_grid = GridSearchCV(estimator=cnn, param_grid=param_grid, scoring = 'roc_auc', cv = 5, n_jobs=-1)
+        lstm_grid = GridSearchCV(estimator=lstm, param_grid=param_grid, scoring = 'roc_auc', cv = 5, n_jobs=-1)
+        # Fit the model
+        cnn_result = cnn_grid.fit(X_train, Y_train)
+        lstm_result = lstm_grid.fit(X_train, Y_train) 
+        #grid_search results:
+        print("CNN Best: %f using %s" % (cnn_result.best_score_, cnn_result.best_params_))
+        means = cnn_result.cv_results_['mean_test_score']
+        stds = cnn_result.cv_results_['std_test_score']
+        params = cnn_result.cv_results_['params']
+        for mean, stdev, param in zip(means, stds, params):
+            print("%f (%f) with: %r" % (mean, stdev, params))
+        
+        print("LSTM Best: %f using %s" % (cnn_result.best_score_, cnn_result.best_params_))
+        means = lstm_result.cv_results_['mean_test_score']
+        stds = lstm_result.cv_results_['std_test_score']
+        params = lstm_result.cv_results_['params']
+        for mean, stdev, param in zip(means, stds, params):
+            print("%f (%f) with: %r" % (mean, stdev, params))
+        
+        #KFold = 5
+        #kfold = StratifiedKFold(n_splits=5, shuffle=True, random_state=7)
+        #cvscores = []
+        #for training, testing in kfold.split(X_train, Y_train):     
+            # Fit the model
+            #model.fit(X[training], Y[training], nb_epoch=150, batch_size=10, verbose=0)
+            # evaluate the model
+            #scores = model.evaluate(X[testing], Y[testing], verbose=0)
+            #print("%s: %.2f%%" % (model.metrics_names[1], scores[1]*100))
+            #cvscores.append(scores[1] * 100)
+        #print("%.2f%% (+/- %.2f%%)" % (np.mean(cvscores), np.std(cvscores)))
+
+ ######TESTING#######
         cnn = cnn_train(top_words = top_words, max_length = max_review_length, embedding_length=embedding_length)
         lstm = lstm_train(top_words = top_words, max_length = max_review_length, embedding_length=embedding_length)
             
-        cnn.fit(X_train, Y_train, validation_split = .2, nb_epoch=10, batch_size=128, shuffle = True, verbose=1)
-        lstm.fit(X_train, Y_train, validation_split = .2, nb_epoch=10, batch_size=128, shuffle = True, verbose=1)
+        cnn.fit(X_train, Y_train, validation_split = .2, nb_epoch=100, batch_size=128, shuffle = True, verbose=1)
+        lstm.fit(X_train, Y_train, validation_split = .2, nb_epoch=100, batch_size=128, shuffle = True, verbose=1)
 
         #testing
         predictions_lstm = lstm.predict_classes(X_test)
