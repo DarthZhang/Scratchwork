@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Jan 17 16:38:42 2017
+
+@author: andy
+"""
+
 import sys
 import pickle
 import os.path as path
@@ -31,7 +38,9 @@ from sklearn import preprocessing
 
 from sklearn.metrics import accuracy_score, roc_auc_score, f1_score, precision_score, recall_score
 from sklearn import preprocessing, cross_validation
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression as LR
+from sklearn.svm import SVC as SVM
+from sklearn.ensemble import RandomForestClassifier as RF
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
 from keras.wrappers.scikit_learn import KerasClassifier
 
@@ -161,7 +170,7 @@ def querying(conn):
     #PTEN = Disease(pten, conn)
     STROKE = Disease(stroke, conn)
     SEPSIS = Disease(sepsis, conn)
-    RF = Disease(rf, conn)
+    renal = Disease(rf, conn)
     CIRRHOSIS = Disease(cirrhosis, conn)
     T2DM = Disease(t2dm, conn)
     CAD = Disease(cad, conn)
@@ -175,7 +184,7 @@ def querying(conn):
     #PTEN.readmission()
     STROKE.readmission(); print ("{0} done.".format(STROKE))
     SEPSIS.readmission(); print ("{0} done.".format(SEPSIS))
-    RF.readmission(); print ("{0} done.".format(RF))
+    renal.readmission(); print ("{0} done.".format(renal))
     CIRRHOSIS.readmission(); print ("{0} done.".format(CIRRHOSIS))
     T2DM.readmission(); print ("{0} done.".format(T2DM))
     CAD.readmission(); print ("{0} done.".format(CAD))
@@ -185,7 +194,7 @@ def querying(conn):
     d=[]
     d.append((ATH.pos, ATH.neg))
     d.append((T2DM.pos, T2DM.neg))
-    d.append((Afib.pos, Afib.neg)); d.append((ARDS.pos, ARDS.neg)); d.append((CAD.pos, CAD.neg)); d.append((CHF.pos, CHF.neg)); d.append((STROKE.pos, STROKE.neg)); d.append((CIRRHOSIS.pos, CIRRHOSIS.neg)); d.append((RF.pos, RF.neg)); d.append((SEPSIS.pos, SEPSIS.neg))
+    d.append((Afib.pos, Afib.neg)); d.append((ARDS.pos, ARDS.neg)); d.append((CAD.pos, CAD.neg)); d.append((CHF.pos, CHF.neg)); d.append((STROKE.pos, STROKE.neg)); d.append((CIRRHOSIS.pos, CIRRHOSIS.neg)); d.append((renal.pos, renal.neg)); d.append((SEPSIS.pos, SEPSIS.neg))
     #return (CHF, Afib, STROKE, SEPSIS, RF, CIRRHOSIS, T2DM, CAD, ATH, ARDS)
     return (d)
 
@@ -232,24 +241,32 @@ def embedding(conn, lib):
 
 ##### Under Construction #####  
     
-def d_cnn_train(input_shape, dropout_W = 0.2, dropout_U = 0.2):
+def d_cnn_train(input_shape, dropout_W = 0.2, dropout_U = 0.2, optimizer = 'Adam', neurons = 100, learn_rate = .01, momentum= 0.0, W_regularizer = None, U_regularizer = None, init_mode = 'zero'):
     model = Sequential()
-    model.add(Convolution1D(input_shape = input_shape, nb_filter = 300, filter_length = 3, border_mode = 'same', activation = 'relu'))
+    model.add(Convolution1D(input_shape = input_shape, nb_filter = 300, filter_length = 3, border_mode = 'same', activation = 'relu', init = init_mode))
     model.add(MaxPooling1D(pool_length = 2))
-    model.add(LSTM(100, dropout_W = dropout_W, dropout_U = dropout_U))
-    #model.add(Dense(50, activation = 'relu'))
-    #model.add(Dense(25, activation = 'relu'))
+    model.add(LSTM(output_dim=neurons, dropout_W = dropout_W, dropout_U = dropout_U, W_regularizer = W_regularizer, U_regularizer = U_regularizer))
     model.add(Dense(1, activation = 'sigmoid'))
-    model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
+    if optimizer == 'SGD':
+        optimizer = SGD(lr = learn_rate, momentum = momentum, nesterov = True)
+    elif optimizer == 'RMSprop':
+        optimizer = RMSprop(lr = learn_rate)
+    elif optimizer == 'Adam':
+        optimizer = Adam(lr=learn_rate)
+    model.compile(loss = 'binary_crossentropy', optimizer = optimizer, metrics = ['accuracy'])
     return (model)
 
-def d_lstm_train(input_shape, dropout_W = 0.2, dropout_U = 0.2):
+def d_lstm_train(input_shape, dropout_W = 0.2, dropout_U = 0.2, optimizer = 'adam', neurons = 100, learn_rate = .01, momentum= 0.0, W_regularizer = None, U_regularizer = None, init_mode = 'zero'):
     model = Sequential()
-    model.add(LSTM(100, input_shape = input_shape, dropout_W = dropout_W, dropout_U = dropout_U))
-    #model.add(Dense(50, activation = 'relu'))
-    #model.add(Dense(25, activation = 'relu'))
+    model.add(LSTM(output_dim=neurons, dropout_W = dropout_W, dropout_U = dropout_U, W_regularizer = W_regularizer, U_regularizer = U_regularizer))
     model.add(Dense(1, activation = 'sigmoid'))
-    model.compile(loss = 'binary_crossentropy', optimizer = 'adam', metrics = ['accuracy'])
+    if optimizer == 'SGD':
+        optimizer = SGD(lr = learn_rate, momentum = momentum, nesterov = True)
+    elif optimizer == 'RMSprop':
+        optimizer = RMSprop(lr = learn_rate)
+    elif optimizer == 'Adam':
+        optimizer = Adam(lr=learn_rate)
+    model.compile(loss = 'binary_crossentropy', optimizer = optimizer, metrics = ['accuracy'])
     return (model)
     
 def cnn_train(top_words, max_length, embedding_length, dropout_W = 0.2, dropout_U = 0.2, optimizer = 'Adam', neurons = 100, learn_rate = .01, momentum= 0.0, W_regularizer = None, U_regularizer = None, init_mode = 'zero'):
@@ -262,7 +279,7 @@ def cnn_train(top_words, max_length, embedding_length, dropout_W = 0.2, dropout_
     #model.add(Dense(25, activation = 'relu'))
     model.add(Dense(1, activation = 'sigmoid'))
     if optimizer == 'SGD':
-        optimizer = SGD(lr = learn_rate, momentum = momentum)
+        optimizer = SGD(lr = learn_rate, momentum = momentum, nesterov = True)
     elif optimizer == 'RMSprop':
         optimizer = RMSprop(lr = learn_rate)
     elif optimizer == 'Adam':
@@ -281,13 +298,42 @@ def lstm_train(top_words, max_length, embedding_length, dropout_W = 0.2, dropout
     #model.add(Dense(25, activation = 'relu'))
     model.add(Dense(1, activation = 'sigmoid'))
     if optimizer == 'SGD':
-        optimizer = SGD(lr = learn_rate, momentum = momentum)
+        optimizer = SGD(lr = learn_rate, momentum = momentum, nesterov = True)
     elif optimizer == 'RMSprop':
         optimizer = RMSprop(lr = learn_rate)
     elif optimizer == 'Adam':
         optimizer = Adam(lr=learn_rate)
     model.compile(loss = 'binary_crossentropy', optimizer = optimizer, metrics = ['accuracy'])
     return (model)
+
+def decay(x, t_stamps, embedding_length, max_review_length):
+    #W_train = []
+    C = []
+    print ("Making SG...")
+    SG = gensim.models.Word2Vec(sentences = x, sg = 1, size = embedding_length, window = 10, min_count = 50, hs = 1, negative = 0, workers = 4)
+    print ("SG embedding complete.")
+    for ii in range(len(t_stamps)):
+        decay_factor=np.array([math.exp(-1 * decay * elapse.total_seconds()/3600) for elapse in t_stamps[ii]])
+        v = np.array(list(map(lambda x: SG[x] if x in SG.wv.vocab else [0]*embedding_length, x[ii])))
+        w = np.array([np.multiply(v[index], decay_factor[index]) for index in range(len(decay_factor))])
+        if w.shape[0]<max_review_length:
+            temp = np.array([[0]*embedding_length for jjj in range(max_review_length-len(v))])
+            w = np.concatenate((w,temp))
+        elif len(w) > max_review_length:
+            w = w[0:max_review_length]
+        
+        if ii == 0:
+            W = np.memmap('w_train.mymemmap', mode = 'w+', shape = (1, w.shape[0], w.shape[1]), dtype = 'object')
+            W[:] = w[:].reshape((1,max_review_length, embedding_length))
+            C = w
+        else:
+            W= np.memmap('w_train.mymemmap', mode = 'r+', shape = (ii+1, w.shape[0], w.shape[1]), dtype = 'object')
+            W[ii:,:] = w[:].reshape((1,max_review_length, embedding_length))       
+            C = np.add(C, w)
+    C.reshape(1, max_review_length, embedding_length)
+    return (W, C)
+    
+##########################
     
 def modeling(conn, sentences, lib, dz):
 #def modeling(conn, df, lib, dz):
@@ -366,59 +412,7 @@ def modeling(conn, sentences, lib, dz):
             V_test.append(np.array(x_train))
             t_test.append(np.array(t_stamps))
             Y_test.append(t[3])            
-            
-####### DECAY STEP ##############      
-        #make exclusion list for test patients
-        introns = [t[0] for t in test]
-        #instance = [t[2] for t in test]
-        #sentences have format (s, hadm, [words], [times])
-        lst = [i[2] for i in sentences if i[0] not in introns]
-            
-        #lst = list(~df[df.SUBJECT_ID.isin(introns)].SUBJECT_ID)
-        #word2vec:
-        #configure hyperparams as appropriate
-        print ("Making SG...")
-        SG = gensim.models.Word2Vec(sentences = lst, sg = 1, size = embedding_length, window = 10, min_count = 50, hs = 1, negative = 0, workers = 4)
-        print ("SG embedding complete.")
-        #CBOW = gensim.models.Word2Vec(sentences = lst, sg = 0, size = 300, window = 10, min_count = 465, hs = 1, negative = 0, workers = 4)
-        #construct sequence feature from train(ing) set
-        #making W_train, W_test
-        cnn_d = d_cnn_train(input_shape = (max_review_length, embedding_length))
-        lstm_d = d_lstm_train(input_shape = (max_review_length, embedding_length))
-
-        #SG = gensim.models.Word2Vec.load('/home/andy/Desktop/MIMIC/sg_temp')
-        nb_epoch = 5
-        for e in range(nb_epoch):
-            print ("+++++++++++++")
-            print ("Epoch: %d" %e)
-            
-            for i in range(0,len(V_train), 128):
-                if (i+128)>=len(t_train): 
-                    t_stamps = t_train[i:]
-                    x = V_train[i:]
-                    y = Y_train[i:]
-                else:
-                    t_stamps = t_train[i:i+128]
-                    x = V_train[i:i+128]
-                    y = Y_train[i:i+128]
-
-                W_train = []
-                for ii in range(len(t_stamps)):
-                    decay_factor=np.array([math.exp(-1 * decay * elapse.total_seconds()/3600) for elapse in t_stamps[ii]])
-                    v = np.array(list(map(lambda x: SG[x] if x in SG.wv.vocab else [0]*embedding_length, x[ii])))
-                    w = np.array([np.multiply(v[index], decay_factor[index]) for index in range(len(decay_factor))])
-                    if w.shape[0]<max_review_length:
-                        temp = np.array([[0]*embedding_length for jjj in range(max_review_length-len(v))])
-                        w = np.concatenate((w,temp))
-                    elif len(w) > max_review_length:
-                        w = w[0:max_review_length]
-                    W_train.append(w)
-                    
-                W_train = np.array(W_train)
-                lstm_d.fit(W_train, y, validation_split = .2,  nb_epoch = 5, verbose = 1)
-                cnn_d.fit(W_train, y, validation_split = .2,  nb_epoch = 5, verbose= 1)
-##########################################
-                
+                           
         #training normal LSTM and CNN-LSTM          
         top_words = [9444]
         max_review_length = [1000]
@@ -430,13 +424,15 @@ def modeling(conn, sentences, lib, dz):
         #build model using KerasClassifier and Gridsearch
         cnn = KerasClassifier(build_fn=cnn_train, verbose=1)
         lstm = KerasClassifier(build_fn=lstm_train, verbose=1)
+        d_cnn = KerasClassifier(build_fn=d_cnn_train, verbose = 1)
+        d_lstm = KerasClassifier(build_fn=d_lstm_train, verbose = 1)
         # define the grid search parameters
 
         batch_size = [32, 64, 128]
-        epochs = [20, 50, 100]
+        epochs = [20, 50, 100, 200]
         optimizer = ['SGD', 'RMSprop', 'Adam']
-        learn_rate = [0.00001, 0.0001, 0.001]
-        momentum = [0.0, 0.2, 0.4, 0.6, 0.8, 0.9]
+        learn_rate = (10.0**np.arange(-4,-1)).tolist()
+        momentum = np.arange(.5,.9,.1).tolist()
         neurons = [50, 100, 200]
         dropout_W = [.1, .2, .5]
         dropout_U = [.1, .2, .5]
@@ -445,13 +441,31 @@ def modeling(conn, sentences, lib, dz):
         init_mode = ['uniform', 'normal', 'zero']
         #activation = ['softmax', 'softplus', 'softsign', 'relu', 'tanh', 'sigmoid', 'hard_sigmoid', 'linear']
         param_grid = dict(top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size=batch_size, nb_epoch=epochs, optimizer = optimizer, learn_rate = learn_rate, momentum = momentum, neurons = neurons, dropout_W = dropout_W, dropout_U = dropout_U, W_regularizer = W_regularizer, U_regularizer = U_regularizer, init_mode = init_mode)
-            
+        d_param_grid = dict(input_shape = [(max_review_length[0], embedding_length[0])], batch_size=batch_size, nb_epoch=epochs, optimizer = optimizer, learn_rate = learn_rate, momentum = momentum, neurons = neurons, dropout_W = dropout_W, dropout_U = dropout_U, W_regularizer = W_regularizer, U_regularizer = U_regularizer, init_mode = init_mode)
+        lr_params = {'C':(10.0**np.arange(-4,4)).tolist(), 'penalty':('l1','l2')}
+        sv_params = {'C':(10.0**np.arange(-4,4)).tolist(), 'kernel':('linear', 'poly', 'rbf', 'sigmoid')}
+        rf_params = {'criterion': ['gini', 'entropy']}
+
         #setup GridSearch w/ cross validation
         cnn_grid = GridSearchCV(estimator=cnn, param_grid=param_grid, scoring = 'roc_auc', cv = 5, n_jobs=-1)
         lstm_grid = GridSearchCV(estimator=lstm, param_grid=param_grid, scoring = 'roc_auc', cv = 5, n_jobs=-1)
+        d_cnn_grid = GridSearchCV(estimator=d_cnn, param_grid=d_param_grid, scoring = 'roc_auc', cv = 5, n_jobs=-1)
+        d_lstm_grid = GridSearchCV(estimator=d_lstm, param_grid=d_param_grid, scoring = 'roc_auc', cv = 5, n_jobs=-1)
+        classics = GridSearchCV(estimator = (LR, SVM, RF), param_grid = (lr_params, sv_params, rf_params), scoring = 'roc_auc', sv = 5, n_jobs = -1)
+        #lr_grid = GridSearchCV(estimator = lr_params, param_grid = lr_params, scoring = 'roc_auc', sv = 5, n_jobs = -1)
+        #sv_grid = GridSearchCV(estimator = sv_params, param_grid = sv_params, scoring = 'roc_auc', sv = 5, n_jobs = -1)
+        #rf_grid = GridSearchCV(estimator = rf_params, param_grid = rf_params, scoring = 'roc_auc', sv = 5, n_jobs = -1)
+
         # Fit the model
         cnn_result = cnn_grid.fit(X_train, Y_train)
         lstm_result = lstm_grid.fit(X_train, Y_train) 
+        d_cnn_result = d_cnn_grid.fit(decay(x=np.array(V_train), t_stamps =t_train, embedding_length=embedding_length[0], max_review_length=max_review_length[0])[0], Y_train)
+        d_lstm_result = d_lstm_grid.fit(decay(x=np.array(V_train), t_stamps =t_train, embedding_length=embedding_length[0], max_review_length=max_review_length[0])[0], Y_train) 
+        classics_result = classics.fit(decay(x=V_train, t_stamps =t_train, embedding_length=embedding_length[0], max_review_length=max_review_length[0])[1], Y_train)       
+        #lr_result = lr_grid.fit(decay(x=V_train, t_stamps =t_train, embedding_length=embedding_length, max_review_length=max_review_length)[1], Y_train)
+        #sv_result = sv_grid.fit(decay(x=V_train, t_stamps =t_train, embedding_length=embedding_length, max_review_length=max_review_length)[1], Y_train)
+        #rf_result = rf_grid.fit(decay(x=V_train, t_stamps =t_train, embedding_length=embedding_length, max_review_length=max_review_length)[1], Y_train)        
+        
         #grid_search results:
         print("CNN Best: %f using %s" % (cnn_result.best_score_, cnn_result.best_params_))
         means = cnn_result.cv_results_['mean_test_score']
@@ -460,12 +474,33 @@ def modeling(conn, sentences, lib, dz):
         for mean, stdev, param in zip(means, stds, params):
             print("%f (%f) with: %r" % (mean, stdev, params))
         
-        print("LSTM Best: %f using %s" % (cnn_result.best_score_, cnn_result.best_params_))
+        print("LSTM Best: %f using %s" % (lstm_result.best_score_, lstm_result.best_params_))
         means = lstm_result.cv_results_['mean_test_score']
         stds = lstm_result.cv_results_['std_test_score']
         params = lstm_result.cv_results_['params']
         for mean, stdev, param in zip(means, stds, params):
             print("%f (%f) with: %r" % (mean, stdev, params))
+        
+        print("Decay CNN Best: %f using %s" % (d_cnn_result.best_score_, d_cnn_result.best_params_))
+        means = d_cnn_result.cv_results_['mean_test_score']
+        stds = d_cnn_result.cv_results_['std_test_score']
+        params = d_cnn_result.cv_results_['params']
+        for mean, stdev, param in zip(means, stds, params):
+            print("%f (%f) with: %r" % (mean, stdev, params))        
+            
+        print("Decay LSTM Best: %f using %s" % (d_lstm_result.best_score_, d_lstm_result.best_params_))
+        means = d_lstm_result.cv_results_['mean_test_score']
+        stds = d_lstm_result.cv_results_['std_test_score']
+        params = d_lstm_result.cv_results_['params']
+        for mean, stdev, param in zip(means, stds, params):
+            print("%f (%f) with: %r" % (mean, stdev, params))        
+            
+        print("Best of Classics: %f using %s, %s" % (classics_result.best_score_, classics_result.best_estimator_, classics_result.best_params_))    
+        means = classics_result.cv_results_['mean_test_score']
+        stds = classics_result.cv_results_['std_test_score']
+        params = classics_result.cv_results_['params']
+        for mean, stdev, param in zip(means, stds, params):
+            print("%f (%f) with: %r" % (mean, stdev, params))        
         
         #KFold = 5
         #kfold = StratifiedKFold(n_splits=5, shuffle=True, random_state=7)
