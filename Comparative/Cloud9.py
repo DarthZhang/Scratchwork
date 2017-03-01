@@ -26,7 +26,7 @@ import gensim
 import math
 import random
 import datetime
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import re
 
 from scipy import stats
@@ -76,8 +76,63 @@ labitems_doc = '/mnt/research/data/MIMIC3/physionet.org/works/MIMICIIIClinicalDa
 patients_doc = '/mnt/research/data/MIMIC3/physionet.org/works/MIMICIIIClinicalDatabase/files/version_1_3/PATIENTS.csv.gz'
 
 def main():
-    data = modeling (admits = admits, sentences = sentences, lib = lib, dz = d)
-    
+    np.random.seed(7)
+    lst = ['optimizer', 'learn_rate','dropout','regularizer', 'init_mode']
+    cnn_params = {}; lstm_params = {}; d_cnn_params = {}; d_lstm_params = {}
+    cnn_data = {}; lstm_data={}, d_cnn_data = {}, d_lstm_data = {}
+    for l in lst:
+        print ("Sess: {0}".format(i))
+        X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test = get_split(admits = admits, sentences = sentences, lib = lib, dz = d)
+        cnn = deep_modeling(X_train, Y_train, option = l, preset=cnn_params, option = 'cnn')
+        cnn_params.update(cnn.best_params_)
+        lstm = deep_modeling(X_train, Y_train, option = l, preset=lstm_params, option = 'lstm')
+        lstm_params.update(lstm.best_params_)
+        d_cnn = deep_modeling(X_train, Y_train, option = l, preset=d_cnn_params, option = 'd_cnn')
+        d_cnn_params.update(d_cnn.best_params_)
+        d_lstm = deep_modeling(X_train, Y_train, option = l, preset=d_lstm_params, option = 'd_lstm')
+        d_lstm_params.update(d_lstm.best_params_)
+        
+        cnn_scores = testing(X_train, X,test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=cnn_params, option= 'cnn')
+        lstm_scores = testing(X_train, X,test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=lstm_params, option= 'lstm')
+
+        cnn_scores = testing(X_train, X,test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=d_cnn_params, option= 'd_cnn')
+        lstm_scores = testing(X_train, X,test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=d_lstm_params, option= 'd_lstm')
+
+        if l==lst[0]:
+            cnn_data = pd.DataFrame({'best_hyperparam': cnn.best_params_, 'cnn_grid': cnn.grid_scores_, 'acc': cnn_scores['acc'],
+                                 'f1': cnn_scores['f1'], 'auc':cnn_scores['auc']})
+            lstm_data = pd.DataFrame({'best_hyperparam': lstm.best_params_, 'lstm_grid': lstm.grid_scores_, 'acc': lstm_scores['acc'],
+                                 'f1': lstm_scores['f1'], 'auc':lstm_scores['auc']})
+            d_cnn_data = pd.DataFrame({'best_hyperparam': d_cnn.best_params_, 'd_cnn_grid': d_cnn.grid_scores_, 'acc': d_cnn_scores['acc'],
+                                 'f1': d_cnn_scores['f1'], 'auc':d_cnn_scores['auc']})
+            d_lstm_data = pd.DataFrame({'best_hyperparam': d_lstm.best_params_, 'd_lstm_grid': d_lstm.grid_scores_, 'acc': d_lstm_scores['acc'],
+                                 'f1': d_lstm_scores['f1'], 'auc':d_lstm_scores['auc']}) 
+        else:
+            temp = pd.DataFrame({'best_hyperparam': cnn.best_params_, 'cnn_grid': cnn.grid_scores_, 'acc': cnn_scores['acc'],
+                                 'f1': cnn_scores['f1'], 'auc':cnn_scores['auc']})
+            cnn_data = pd.concat(temp, cnn_data)
+            
+            temp = pd.DataFrame({'best_hyperparam': lstm.best_params_, 'lstm_grid': lstm.grid_scores_, 'acc': lstm_scores['acc'],
+                                 'f1': lstm_scores['f1'], 'auc':lstm_scores['auc']})
+            lstm_data = pd.concat(temp, lstm_data)
+            
+            temp = pd.DataFrame({'best_hyperparam': d_cnn.best_params_, 'd_cnn_grid': d_cnn.grid_scores_, 'acc': d_cnn_scores['acc'],
+                                 'f1': d_cnn_scores['f1'], 'auc':d_cnn_scores['auc']})
+            d_cnn_data = pd.concat(temp, d_cnn_data)                                 
+            
+            temp = pd.DataFrame({'best_hyperparam': d_lstm.best_params_, 'd_lstm_grid': d_lstm.grid_scores_, 'acc': d_lstm_scores['acc'],
+                                 'f1': d_lstm_scores['f1'], 'auc':d_lstm_scores['auc']}) 
+            d_lstm_data = pd.concat(temp, d_lstm_data)
+       
+    with open ("/home/tangfeng/MIMIC/cnn_data.pkl", 'wb') as f:
+        pickle.dump(cnn_data, f)
+    with open ("/home/tangfeng/MIMIC/lstm_data.pkl", 'wb') as f:
+        pickle.dump(lstm_data, f)
+    with open ("/home/tangfeng/MIMIC/d_cnn_data.pkl", 'wb') as f:
+        pickle.dump(d_cnn_data, f)
+    with open ("/home/tangfeng/MIMIC/d_lstm_data.pkl", 'wb') as f:
+        pickle.dump(d_lstm_data, f)
+
 ##### Models #####  
 def d_cnn_train(input_shape, dropout_W = 0.2, dropout_U = 0.2, optimizer = 'Adam', neurons = 100, learn_rate = .01, momentum= 0.0, W_regularizer = None, U_regularizer = None, init_mode = 'zero'):
     model = Sequential()
@@ -141,7 +196,7 @@ def lstm_train(top_words, max_length, embedding_length, dropout_W = 0.2, dropout
     return (model)
 
 def decay(x, t_stamps, embedding_length, max_review_length):
-
+    decay = .0002
     C = []
     print ("Making SG...")
     SG = gensim.models.Word2Vec(sentences = x, sg = 1, size = embedding_length, window = 10, min_count = 50, hs = 1, negative = 0, workers = 4)
@@ -168,24 +223,12 @@ def decay(x, t_stamps, embedding_length, max_review_length):
     return (W, C)
     
 ##########################
+def get_split(admits, sentences, lib, dz):
     
-def batch_generator(X, Y):
-    X = X.astype('float32')
-    Y = Y.astype('float32')
-    while 1:
-        for i in range(len(X)/32):
-            if i%125 ==0: print('i = ' +str(i))
-        yield (X[i*32:(i+1)*32], Y[i*32:(i+1)*32])     
-    
-    
-def modeling(admits, sentences, lib, dz):
-
-    np.random.seed(7)
-    decay = .0002
-    data = []; Data = []
     train = []; test = []
     keys = [k[1] for k in lib]
     
+
     for d in dz:
         neg = random.sample(d[1], len(d[0]))
         temp = d[0] + neg
@@ -194,8 +237,8 @@ def modeling(admits, sentences, lib, dz):
         train +=t1; test +=t2
                     
 
-    X_train = []; t_train = []; W_train = []; Y_train = []
-    X_test = []; t_test = []; W_test = []; Y_test = []
+    X_train = []; t_train = []; Y_train = []
+    X_test = []; t_test = [];  Y_test = []
     V_train = []; V_test = []
     
     count=0
@@ -241,112 +284,144 @@ def modeling(admits, sentences, lib, dz):
         X_test.append(x)
         V_test.append(np.array(x_train))
         t_test.append(np.array(t_stamps))
-        Y_test.append(t[3])            
-                           
-    #training normal LSTM and CNN-LSTM          
-    top_words = [9444]
-    max_review_length = [1000]
-    embedding_length = [300]          
-    X_train = sequence.pad_sequences(X_train, maxlen=max_review_length[0])
-    X_test = sequence.pad_sequences(X_test, maxlen=max_review_length[0])
-
-
-    #build model using KerasClassifier and Gridsearch
-    cnn = KerasClassifier(build_fn=cnn_train, verbose=1)
-    lstm = KerasClassifier(build_fn=lstm_train, verbose=1)
-    d_cnn = KerasClassifier(build_fn=d_cnn_train, verbose = 1)
-    d_lstm = KerasClassifier(build_fn=d_lstm_train, verbose = 1)
-        
-    # define the grid search parameters
-    batch_size = [32, 64, 128]
-    epochs = [50, 100, 200]
-    optimizer = ['SGD', 'RMSprop', 'Adam']
-    learn_rate = (10.0**np.arange(-3,-1)).tolist()
-    momentum = np.arange(.5,.9,.1).tolist()
-    neurons = [50, 100, 200]
-    dropout_W = [.1, .2, .5]
-    dropout_U = [.1, .2, .5]
-    W_regularizer = [l1(.0001), l1(.001), l1(.01), l2(.0001), l2(.001), l2(.01), None]
-    U_regularizer = [l1(.0001), l1(.001), l1(.01), l2(.0001), l2(.001), l2(.01), None]
-    init_mode = ['uniform', 'normal', 'zero']
-    #activation = ['softmax', 'softplus', 'softsign', 'relu', 'tanh', 'sigmoid', 'hard_sigmoid', 'linear']
-    param_grid = dict(top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size=batch_size, nb_epoch=epochs, optimizer = optimizer, learn_rate = learn_rate, momentum = momentum, neurons = neurons, dropout_W = dropout_W, dropout_U = dropout_U, W_regularizer = W_regularizer, U_regularizer = U_regularizer, init_mode = init_mode)
-    d_param_grid = dict(input_shape = [(max_review_length[0], embedding_length[0])], batch_size=batch_size, nb_epoch=epochs, optimizer = optimizer, learn_rate = learn_rate, momentum = momentum, neurons = neurons, dropout_W = dropout_W, dropout_U = dropout_U, W_regularizer = W_regularizer, U_regularizer = U_regularizer, init_mode = init_mode)
+        Y_test.append(t[3])           
+    return (X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test)
+    
+def classic_modeling (V, t, Y, max_review_length = 1000, embedding_length = 300):
     lr_params = {'C':(10.0**np.arange(-4,4)).tolist(), 'penalty':('l1','l2')}
     sv_params = {'C':(10.0**np.arange(-4,4)).tolist(), 'kernel':('linear', 'poly', 'rbf', 'sigmoid')}
     rf_params = {'criterion': ['gini', 'entropy']}
     
-    #setup GridSearch w/ cross validation
-    cnn_grid = GridSearchCV(estimator=cnn, param_grid=param_grid, scoring = 'roc_auc', cv = 5, n_jobs=-1, verbose = 100)
-    lstm_grid = GridSearchCV(estimator=lstm, param_grid=param_grid, scoring = 'roc_auc', cv = 5, n_jobs=-1, verbose = 100)
-    d_cnn_grid = GridSearchCV(estimator=d_cnn, param_grid=d_param_grid, scoring = 'roc_auc', cv = 5, n_jobs=-1, verbose = 100)
-    d_lstm_grid = GridSearchCV(estimator=d_lstm, param_grid=d_param_grid, scoring = 'roc_auc', cv = 5, n_jobs=-1, verbose = 100)
-    classics = GridSearchCV(estimator = (LR, SVM, RF), param_grid = (lr_params, sv_params, rf_params), cv = 5, scoring = 'roc_auc', n_jobs = -1, verbose = 100)
-
-    # Fit the model
-    cnn_result = cnn_grid.fit(X_train, Y_train)
-    lstm_result = lstm_grid.fit(X_train, Y_train) 
-    d_cnn_result = d_cnn_grid.fit(decay(x=np.array(V_train), t_stamps =t_train, embedding_length=embedding_length[0], max_review_length=max_review_length[0])[0], Y_train)
-    d_lstm_result = d_lstm_grid.fit(decay(x=np.array(V_train), t_stamps =t_train, embedding_length=embedding_length[0], max_review_length=max_review_length[0])[0], Y_train) 
-    classics_result = classics.fit(decay(x=V_train, t_stamps =t_train, embedding_length=embedding_length[0], max_review_length=max_review_length[0])[1], Y_train)       
-       
-    #grid_search results:
-    print("CNN Best: %f using %s" % (cnn_result.best_score_, cnn_result.best_params_))
-    means = cnn_result.cv_results_['mean_test_score']
-    stds = cnn_result.cv_results_['std_test_score']
-    params = cnn_result.cv_results_['params']
-    for mean, stdev, param in zip(means, stds, params):
-        print("%f (%f) with: %r" % (mean, stdev, params))
-    data = {'CNN':{'means':means, 'stds':stds, 'params':params, 'best': cnn_result.best_score_, 'best_params':cnn_result.best_params_}}
-        
-    print("LSTM Best: %f using %s" % (lstm_result.best_score_, lstm_result.best_params_))
-    means = lstm_result.cv_results_['mean_test_score']
-    stds = lstm_result.cv_results_['std_test_score']
-    params = lstm_result.cv_results_['params']
-    for mean, stdev, param in zip(means, stds, params):
-        print("%f (%f) with: %r" % (mean, stdev, params))
-    data['LSTM'] ={'means':means, 'stds':stds, 'params':params, 'best': lstm_result.best_score_, 'best_params':lstm_result.best_params_}
+    grid = GridSearchCV(estimator = (LR, SVM, RF), param_grid = (lr_params, sv_params, rf_params), scoring = 'roc_auc', n_jobs = -1, verbose = 1)
+    classics_result = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length)[1], Y)       
     
-    print("Decay CNN Best: %f using %s" % (d_cnn_result.best_score_, d_cnn_result.best_params_))
-    means = d_cnn_result.cv_results_['mean_test_score']
-    stds = d_cnn_result.cv_results_['std_test_score']
-    params = d_cnn_result.cv_results_['params']
-    for mean, stdev, param in zip(means, stds, params):
-        print("%f (%f) with: %r" % (mean, stdev, params))
-    data ['Decay CNN'] ={'means':means, 'stds':stds, 'params':params, 'best': d_cnn_result.best_score_, 'best_params':d_cnn_result.best_params_}
-    
-    print("Decay LSTM Best: %f using %s" % (d_lstm_result.best_score_, d_lstm_result.best_params_))
-    means = d_lstm_result.cv_results_['mean_test_score']
-    stds = d_lstm_result.cv_results_['std_test_score']
-    params = d_lstm_result.cv_results_['params']
-    for mean, stdev, param in zip(means, stds, params):
-        print("%f (%f) with: %r" % (mean, stdev, params))       
-    data['Decay LSTM']={'means':means, 'stds':stds, 'params':params, 'best': d_lstm_result.best_score_, 'best_params':d_lstm_result.best_params_}
-            
     print("Best of Classics: %f using %s, %s" % (classics_result.best_score_, classics_result.best_estimator_, classics_result.best_params_))    
     means = classics_result.cv_results_['mean_test_score']
     stds = classics_result.cv_results_['std_test_score']
     params = classics_result.cv_results_['params']
     for mean, stdev, param in zip(means, stds, params):
-        print("%f (%f) with: %r" % (mean, stdev, params))        
-    data['Classics']={'means':means, 'stds':stds, 'params':params, 'best': classics_result.best_score_, 'best_params':classics_result.best_params_}
+        print("%f (%f) with: %r" % (mean, stdev, param))        
+    return (classics_result)
+ 
     
-    Data = pd.DataFrame(data)
+def deep_modeling(X, Y, V, t, top_words = 9444, max_review_length = 1000, embedding_length = 300, batch_size = 128, nb_epoch =100, option = 'cnn', grid_option='init_mode', preset = None):
+    
+    # define the grid search parameters
+    optimizer = ['SGD', 'RMSprop', 'Adam']
+    learn_rate = (10.0**np.arange(-3,-1)).tolist()
+    momentum = np.arange(.5, .9, .1).tolist()
+    #neurons = [100]
+    dropout_W = np.arange(.1, .5, .1).tolist()
+    dropout_U = np.arange(.1, .5, .1).tolist()
+    W_regularizer = [l1(.0001), l1(.001), l1(.01), l2(.0001), l2(.001), l2(.01), None]
+    U_regularizer = [l1(.0001), l1(.001), l1(.01), l2(.0001), l2(.001), l2(.01), None]
+    init_mode = ['uniform', 'normal']
+    #activation = ['softmax', 'softplus', 'softsign', 'relu', 'tanh', 'sigmoid', 'hard_sigmoid', 'linear']
+    if grid_option == 'optimizer':
+        param_grid = dict(optimizer = optimizer)
+        #d_param_grid = dict(optimizer = optimizer)
+    elif grid_option == 'learn':
+        param_grid = dict(learn_rate = learn_rate, momentum = momentum)
+    elif grid_option == 'init_mode':
+        param_grid = dict(init_mode = init_mode)
+    elif grid_option == 'regularizer':
+        param_grid = dict(W_regularizer = W_regularizer, U_regularizer = U_regularizer)
+    elif grid_option == 'dropout':
+        param_grid = dict(dropout_W = dropout_W, dropout_U = dropout_U)
+    else:
+        print ("Error with GridSearch Option Input...")         
+         
+    #training normal LSTM and CNN-LSTM                 
+    X_train = sequence.pad_sequences(X, maxlen=max_review_length)
 
-    return (Data)
+    #build model using KerasClassifier and Gridsearch
+    if option == 'cnn':
+        if len(preset)<1:
+            model = KerasClassifier(build_fn=cnn_train, top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size = batch_size, nb_epoch = nb_epoch, verbose=1)
+        else:            
+            model = KerasClassifier(build_fn=cnn_train, top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size = batch_size, nb_epoch = nb_epoch, **preset, verbose=1)
+        
+    elif option == 'lstm':
+        if len(preset)<1:
+            model = KerasClassifier(build_fn=lstm_train, top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size = batch_size, nb_epoch = nb_epoch, verbose=1)
+        else:
+            model = KerasClassifier(build_fn=lstm_train, top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size = batch_size, nb_epoch = nb_epoch, **preset, verbose=1)
 
+    elif option == 'd_cnn':
+        if len(preset)<1:
+            model = KerasClassifier(build_fn=d_cnn_train, batch_size = batch_size, nb_epoch = nb_epoch, verbose = 1)
+        else:
+            model = KerasClassifier(build_fn=d_cnn_train, batch_size = batch_size, nb_epoch = nb_epoch, **preset, verbose = 1)
+            
+    elif option == 'd_lstm':
+        if len(preset)<1:
+            model = KerasClassifier(build_fn=d_lstm_train, batch_size = batch_size, nb_epoch = nb_epoch, verbose = 1)
+        else:
+            model = KerasClassifier(build_fn=d_lstm_train, batch_size = batch_size, nb_epoch = nb_epoch, **preset, verbose = 1)
+ 
+
+    #param_grid = dict(top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size=batch_size, nb_epoch=epochs, optimizer = optimizer, learn_rate = learn_rate, momentum = momentum, neurons = neurons, dropout_W = dropout_W, dropout_U = dropout_U, W_regularizer = W_regularizer, U_regularizer = U_regularizer, init_mode = init_mode)
+    #d_param_grid = dict(input_shape = [(max_review_length[0], embedding_length[0])], batch_size=batch_size, nb_epoch=epochs, optimizer = optimizer, learn_rate = learn_rate, momentum = momentum, neurons = neurons, dropout_W = dropout_W, dropout_U = dropout_U, W_regularizer = W_regularizer, U_regularizer = U_regularizer, init_mode = init_mode)
+
+    
+    #setup GridSearch w/ cross validation
+    #cnn_grid = GridSearchCV(estimator=cnn, param_grid=param_grid, scoring = 'roc_auc', cv = 5, n_jobs=-1, verbose = 1)
+    #lstm_grid = GridSearchCV(estimator=lstm, param_grid=param_grid, scoring = 'roc_auc', cv = 5, n_jobs=-1, verbose = 1)
+    #d_cnn_grid = GridSearchCV(estimator=d_cnn, param_grid=param_grid, scoring = 'roc_auc', cv = 5, n_jobs=-1, verbose = 1)
+    #d_lstm_grid = GridSearchCV(estimator=d_lstm, param_grid=param_grid, scoring = 'roc_auc', cv = 5, n_jobs=-1, verbose = 1)
+    grid = GridSearchCV(estimator=model, param_grid=param_grid, scoring = 'roc_auc', cv = 5, n_jobs=-1, verbose = 1)
+
+    # Fit the model
+    if option == 'cnn' or option == 'lstm':
+        grid_result = grid.fit(X_train,Y)
+    else:
+        grid_result = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length)[0], Y)
+
+    #cnn_result = cnn_grid.fit(X_train, Y)
+    #lstm_result = lstm_grid.fit(X_train, Y) 
+    #d_cnn_result = d_cnn_grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length)[0], Y)
+    #d_lstm_result = d_lstm_grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length)[0], Y) 
+    #grid_search results:
+    print("Best: %f using %s" % (grid_result.best_score_, grid_result.best_params_))
+    means = grid_result.cv_results_['mean_test_score']
+    stds = grid_result.cv_results_['std_test_score']
+    params = grid_result.cv_results_['params']
+    for mean, stdev, param in zip(means, stds, params):
+        print("%f (%f) with: %r" % (mean, stdev, param))
+    return (grid_result)
+
+def testing(X_train, X,test, V_train, V_test, t_train, t_test, Y_train, Y_test, top_words = 9444, max_review_length = 1000, embedding_length = 300, batch_size = 128, nb_epoch =100, preset, option):
+    if option == 'cnn':
+        model = KerasClassifier(build_fn=cnn_train, top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size = batch_size, nb_epoch = nb_epoch, **preset, verbose=1)
+    elif option == 'lstm':
+        model = KerasClassifier(build_fn=lstm_train, top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size = batch_size, nb_epoch = nb_epoch, **preset, verbose=1)
+    elif option == 'd_cnn':
+        model = KerasClassifier(build_fn=d_cnn_train, batch_size = batch_size, nb_epoch = nb_epoch, **preset, verbose = 1)
+    elif optioin == 'd_lstm':
+        model = KerasClassifier(build_fn=d_lstm_train, batch_size = batch_size, nb_epoch = nb_epoch, **preset, verbose = 1)
+    else: 
+        print("ERROR AT TRAINING PHASE OF TESTING.")
+    
+    model.fit(X_train, Y_train)
+    model.predict_class(X_test)
+    acc = accuracy_score(X_test, Y_test)
+    f1 = f1_score(X_test, Y_test)
+    auc = roc_auc_score(X_test, Y_test)
+    return ({'acc': acc, 'f1':f1, 'auc':auc})
+    
 ##############################
 
 if __name__ == '__main__':
-    #from optparse import OptionParser, OptionGroup
-    #desc = "Welcome to ISeeYou by af1tang."
-    #version = "version 1.0"
-    #opt = OptionParser (description = desc, version=version)
-    #opt.add_option ('-i', action = 'store', type ='string', dest='input', help='Please input path to Database File.')
-    #opt.add_option ('-o', action = 'store', type = 'string', dest='output', default='CHF_data.pickle', help='Please state desired storage file for this session.')
-    #(cli, args) = opt.parse_args()
-    #opt.print_help()
+   # from optparse import OptionParser, OptionGroup
+   # desc = "Welcome to PipeLiner by af1tang."
+   # version = "version 1.0"
+   # opt = OptionParser (description = desc, version=version)
+   # opt.add_option ('-i', action = 'store', type ='string', dest='input', help='Please input path to Database File.')
+   # opt.add_option ('-o', action = 'store', type = 'string', dest='output', default='CHF_data.pickle', help='Please state desired storage file for this session.')
+   # (cli, args) = opt.parse_args()
+   # opt.print_help()
 
+    print ("Pickling...")
     with open ('/home/tangfeng/MIMIC/temp/admits.pkl', 'rb') as f:
         admits = pickle.load(f)
 
@@ -358,39 +433,7 @@ if __name__ == '__main__':
     
     with open ('/home/tangfeng/MIMIC/temp/sentences.pkl', 'rb') as f:
         sentences = pickle.load(f)
-    
+    print ("+++++++++++")
 
     main()  
-    
-###### SCRATCH WORK #########
-######TESTING#######
- #       cnn = cnn_train(top_words = top_words, max_length = max_review_length, embedding_length=embedding_length)
- #       lstm = lstm_train(top_words = top_words, max_length = max_review_length, embedding_length=embedding_length)
- #           
- #       cnn.fit(X_train, Y_train, validation_split = .2, nb_epoch=100, batch_size=128, shuffle = True, verbose=1)
- #       lstm.fit(X_train, Y_train, validation_split = .2, nb_epoch=100, batch_size=128, shuffle = True, verbose=1)
 
- #       #testing
- #       predictions_lstm = lstm.predict_classes(X_test)
- #       predictions_cnn = cnn.predict_classes(X_test)
-
-  #      acc = accuracy_score(Y_test, predictions_lstm)
-  #      f1 = f1_score (Y_test, predictions_lstm)
-  #      auc = roc_auc_score (Y_test, predictions_lstm)
-  #      scores_lstm = [("Accuracy", acc) , ("F1 Score", f1) , ("AUC Score",auc)]
-
- #       acc = accuracy_score(Y_test, predictions_cnn)
- #       f1 = f1_score (Y_test, predictions_cnn)
- #       auc = roc_auc_score (Y_test, predictions_cnn)
- #       scores_cnn = [("Accuracy", acc) , ("F1 Score", f1) , ("AUC Score",auc)]
-
-  #      print ("LSTM DATA: ")
-  #      for s in scores_lstm:
-  #          print("%s: %.2f" %(s[0], s[1]), end = " ")
-  #      print ("")
-  #      print ("CNN DATA: ")
-  #      for s in scores_cnn:
-  #          print("%s: %.2f" %(s[0], s[1]), end = " ")        
-        
-        
-            
