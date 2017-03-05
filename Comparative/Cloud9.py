@@ -57,7 +57,9 @@ from keras.regularizers import l1, l2
 
 #MEMMAP
 from tempfile import mkdtemp
-
+#remember to export CUDAs...
+#export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
+#export CUDA_HOME=/usr/local/cuda
 
 ##### FILE LOCATIONS ######
 ###########################
@@ -82,11 +84,11 @@ def main():
         d_lstm = RandomSearch(V=V_train, t = t_train, Y=Y_train, option = 'd_lstm')
         d_cnn = RandomSearch(V=V_train, t = t_train, Y=Y_train, option = 'd_cnn')
         
-        cnn_scores = testing(X_train, X,test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=cnn.best_params_, option= 'cnn')
-        lstm_scores = testing(X_train, X,test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=lstm.best_params, option= 'lstm')
+        cnn_scores = testing(X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=cnn.best_params_, option= 'cnn')
+        lstm_scores = testing(X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=lstm.best_params, option= 'lstm')
 
-        d_cnn_scores = testing(X_train, X,test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=d_cnn.best_params_, option= 'd_cnn')
-        d_lstm_scores = testing(X_train, X,test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=d_lstm.best_paras_, option= 'd_lstm')
+        d_cnn_scores = testing(X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=d_cnn.best_params_, option= 'd_cnn')
+        d_lstm_scores = testing(X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=d_lstm.best_paras_, option= 'd_lstm')
 
         cnn_data = pd.DataFrame({'best_hyperparam': cnn.best_params_, 'acc': cnn_scores['acc'],
                                  'f1': cnn_scores['f1'], 'auc':cnn_scores['auc']})
@@ -96,20 +98,20 @@ def main():
                                  'f1': d_cnn_scores['f1'], 'auc':d_cnn_scores['auc']})
         d_lstm_data = pd.DataFrame({'best_hyperparam': d_lstm.best_params_, 'acc': d_lstm_scores['acc'],
                                  'f1': d_lstm_scores['f1'], 'auc':d_lstm_scores['auc']}) 
-        with open ("/home/tangfeng/MIMIC/results/cnn_randgrid_"+str(l)+".pkl", 'wb') as f:
+        with open ("/home/tangfeng/MIMIC/results/cnn_randgrid"+".pkl", 'wb') as f:
             pickle.dump(cnn.grid_scores, f)
-        with open ("/home/tangfeng/MIMIC/results/lstm_randgrid_"+str(l)+".pkl", 'wb') as f:
+        with open ("/home/tangfeng/MIMIC/results/lstm_randgrid"+".pkl", 'wb') as f:
             pickle.dump(lstm.grid_scores, f)
-        with open ("/home/tangfeng/MIMIC/results/d_cnn_randgrid_"+str(l)+".pkl", 'wb') as f:
+        with open ("/home/tangfeng/MIMIC/results/d_cnn_randgrid"+".pkl", 'wb') as f:
             pickle.dump(d_cnn.grid_scores, f)
-        with open ("/home/tangfeng/MIMIC/results/d_lstm_randgrid_"+str(l)+".pkl", 'wb') as f:
+        with open ("/home/tangfeng/MIMIC/results/d_lstm_randgrid"+".pkl", 'wb') as f:
             pickle.dump(d_lstm.grid_scores, f)
     else:
         lst = ['optimizer', 'learn_rate','dropout','regularizer', 'init_mode']
         cnn_params = {}; lstm_params = {}; d_cnn_params = {}; d_lstm_params = {}
-        cnn_data = {}; lstm_data={}, d_cnn_data = {}, d_lstm_data = {}
+        cnn_data = {}; lstm_data={}; d_cnn_data = {}; d_lstm_data = {}
         for l in lst:
-            print ("Sess: {0}".format(i))
+            print ("Sess: {0}".format(l))
             X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test = get_split(admits = admits, sentences = sentences, lib = lib, dz = d)
             cnn = deep_modeling(X_train=X_train, Y_train=Y_train, grid_option = l, preset=cnn_params, option = 'cnn')
             cnn_params.update(cnn.best_params_)
@@ -120,11 +122,11 @@ def main():
             d_lstm = deep_modeling(X_train=X_train, Y_train=Y_train, grid_option = l, preset=d_lstm_params, option = 'd_lstm')
             d_lstm_params.update(d_lstm.best_params_)
         
-            cnn_scores = testing(X_train, X,test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=cnn_params, option= 'cnn')
-            lstm_scores = testing(X_train, X,test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=lstm_params, option= 'lstm')
+            cnn_scores = testing(X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=cnn_params, option= 'cnn')
+            lstm_scores = testing(X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=lstm_params, option= 'lstm')
 
-            d_cnn_scores = testing(X_train, X,test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=d_cnn_params, option= 'd_cnn')
-            d_lstm_scores = testing(X_train, X,test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=d_lstm_params, option= 'd_lstm')
+            d_cnn_scores = testing(X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=d_cnn_params, option= 'd_cnn')
+            d_lstm_scores = testing(X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=d_lstm_params, option= 'd_lstm')
 
             if l==lst[0]:
                 cnn_data = pd.DataFrame({'best_hyperparam': cnn.best_params_, 'acc': cnn_scores['acc'],
@@ -205,7 +207,7 @@ def cnn_train(top_words, max_length, embedding_length, dropout_W = 0.2, dropout_
     model.add(Convolution1D(nb_filter = 300, filter_length = 3, border_mode = 'same', activation = 'relu'))
     model.add(MaxPooling1D(pool_length = 2))
     model.add(LSTM(output_dim=neurons, dropout_W = dropout_W, dropout_U = dropout_U, W_regularizer = W_regularizer, U_regularizer = U_regularizer))
-
+    
     model.add(Dense(1, activation = 'sigmoid'))
     if optimizer == 'SGD':
         optimizer = SGD(lr = learn_rate, momentum = momentum, nesterov = True)
@@ -261,19 +263,16 @@ def decay(x, t_stamps, embedding_length, max_review_length):
     
 ##########################
 def get_split(admits, sentences, lib, dz):
-    
     train = []; test = []
     keys = [k[1] for k in lib]
     
-
     for d in dz:
         neg = random.sample(d[1], len(d[0]))
         temp = d[0] + neg
         random.shuffle(temp)
         t1, t2 = cross_validation.train_test_split(temp, test_size = .2)
         train +=t1; test +=t2
-                    
-
+        
     X_train = []; t_train = []; Y_train = []
     X_test = []; t_test = [];  Y_test = []
     V_train = []; V_test = []
@@ -282,34 +281,33 @@ def get_split(admits, sentences, lib, dz):
     for t in train:
         print (count)
         count+=1
-
+        
         corpus = [[s[2], s[3]] for s in sentences if  (s[0] == t[0]) and (pd.to_datetime(admits[admits['HADM_ID']==s[1]].ADMITTIME.values[0]) <= t[1])]
         corpus = sorted(corpus, key = lambda x: x[1])
-
+        
         corpus = list(map(list, zip(*corpus)))                  
         x_train = list(chain.from_iterable(corpus[0]))
         t_stamps = list(chain.from_iterable(corpus[1]))
         x = np.array(list(map(lambda x: keys.index(x), x_train)))
-     
-
+        
         temp = t_stamps[0]
         t_stamps = [ii-temp for ii in t_stamps]
-                
+        
         #append
         X_train.append(x)
         V_train.append(np.array(x_train))
         t_train.append(np.array(t_stamps))
         Y_train.append(t[3])
-                
+                        
     print ("X_train made.")
-
+    
     count = 0
     for t in test:
         print (count)
         count+=1
-                
+                        
         corpus = [[s[2], s[3]] for s in sentences if  (s[0] == t[0]) and (pd.to_datetime(admits[admits['HADM_ID']==s[1]].ADMITTIME.values[0]) <= t[1])]
-                
+                        
         corpus = sorted(corpus, key = lambda x: x[1])
         corpus = list(map(list, zip(*corpus)))                  
         x_test = list(chain.from_iterable(corpus[0]))
@@ -317,13 +315,13 @@ def get_split(admits, sentences, lib, dz):
         temp = t_stamps[0]
         t_stamps = [ii-temp for ii in t_stamps]
         x = np.array(list(map(lambda x: keys.index(x), x_test)))
-            
+                    
         X_test.append(x)
         V_test.append(np.array(x_train))
         t_test.append(np.array(t_stamps))
         Y_test.append(t[3])           
     return (X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test)
-    
+        
 def report(results, n_top=3):
     for i in range(1, n_top + 1):
         candidates = np.flatnonzero(results['rank_test_score'] == i)
@@ -341,7 +339,7 @@ def RandomSearch(X=[], V= [], t=[], Y=[], top_words = 9444, max_review_length = 
     rf_params = {'criterion': ['gini', 'entropy']}
     
     optimizer = ['SGD', 'RMSprop', 'Adam']
-    learn_rate = sp_rand(.0001, .01, .0001)
+    learn_rate = sp_rand(.0001, .01)
     momentum = sp_rand(.5, .9)
     #neurons = [100]
     dropout_W = sp_rand(0, .5)
@@ -349,34 +347,35 @@ def RandomSearch(X=[], V= [], t=[], Y=[], top_words = 9444, max_review_length = 
     W_regularizer = [l1(.0001), l1(.001), l1(.01), l2(.0001), l2(.001), l2(.01), None]
     U_regularizer = [l1(.0001), l1(.001), l1(.01), l2(.0001), l2(.001), l2(.01), None]
     init_mode = ['uniform', 'lecun_uniform', 'normal', 'zero', 'glorot_normal', 'glorot_uniform', 'he_normal', 'he_uniform']
-    params = dict(optimizer = optimizer, learn_rate = learn_rate, momentum = momentum, W_regularizer = W_regularizer, U_regularizer = U_regularizer, dropout_W = dropout_w, dropout_U = dropout_U, init_mode = init_mode)
-
+    params = dict(optimizer = optimizer, learn_rate = learn_rate, momentum = momentum, W_regularizer = W_regularizer, U_regularizer = U_regularizer, dropout_W = dropout_W, dropout_U = dropout_U, init_mode = init_mode)
+    
     n_iter_search = 50
-
+    X_train = sequence.pad_sequences(X, maxlen=max_review_length)
+    
     if option == 'classic':    
-        grid = RandomizedSearchCV(estimator = (LR, SVM, RF), param_distributions = (lr_params, sv_params, rf_params), scoring = 'roc_auc', n_jobs = -1, n_iter=n_iter_search, verbose = 1)
+        grid = RandomizedSearchCV(estimator = (LR, SVM, RF), param_distributions = (lr_params, sv_params, rf_params), scoring = 'roc_auc', n_jobs = 1, n_iter=n_iter_search, verbose = 1)
         results = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length)[1], Y)       
         
     elif option == 'cnn':
         model = KerasClassifier(build_fn=cnn_train, top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size = batch_size, nb_epoch = nb_epoch, verbose=1)
-        grid = RandomizedSearchCV(estimator=model, param_distributions=params, scoring = 'roc_auc', cv = 5, n_jobs=-1, n_iter=n_iter_search, verbose = 1)
+        grid = RandomizedSearchCV(estimator=model, param_distributions=params, scoring = 'roc_auc', cv = 5, n_jobs=1, n_iter=n_iter_search, verbose = 1)
         results = grid.fit(X_train,Y)
-
+        
     elif option == 'lstm':
         model = KerasClassifier(build_fn=lstm_train, top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size = batch_size, nb_epoch = nb_epoch, verbose=1)
-        grid = RandomizedSearchCV(estimator=model, param_distributions=params, scoring = 'roc_auc', cv = 5, n_jobs=-1, n_iter=n_iter_search, verbose = 1)
+        grid = RandomizedSearchCV(estimator=model, param_distributions=params, scoring = 'roc_auc', cv = 5, n_jobs=1, n_iter=n_iter_search, verbose = 1)
         results = grid.fit(X_train,Y)
-
+        
     elif option == 'd_cnn':
         model = KerasClassifier(build_fn=d_cnn_train, batch_size = batch_size, nb_epoch = nb_epoch, verbose = 1)
-        grid = RandomizedSearchCV(estimator=model, param_distributions=params, scoring = 'roc_auc', cv = 5, n_jobs=-1, n_iter=n_iter_search, verbose = 1)
+        grid = RandomizedSearchCV(estimator=model, param_distributions=params, scoring = 'roc_auc', cv = 5, n_jobs=1, n_iter=n_iter_search, verbose = 1)
         results = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length)[0], Y)
-
+        
     elif option == 'd_lstm':
         model = KerasClassifier(build_fn=d_lstm_train, batch_size = batch_size, nb_epoch = nb_epoch, verbose = 1)
-        grid = RandomizedSearchCV(estimator=model, param_distributions=params, scoring = 'roc_auc', cv = 5, n_jobs=-1, n_iter=n_iter_search, verbose = 1)
+        grid = RandomizedSearchCV(estimator=model, param_distributions=params, scoring = 'roc_auc', cv = 5, n_jobs=1, n_iter=n_iter_search, verbose = 1)
         results = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length)[0], Y)
-
+        
     report(results.cv_results_)
     return (results)
     
@@ -427,25 +426,29 @@ def deep_modeling(X, Y, V, t, top_words = 9444, max_review_length = 1000, embedd
         if len(preset)<1:
             model = KerasClassifier(build_fn=cnn_train, top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size = batch_size, nb_epoch = nb_epoch, verbose=1)
         else:            
-            model = KerasClassifier(build_fn=cnn_train, top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size = batch_size, nb_epoch = nb_epoch, **preset, verbose=1)
+            preset.update({'build_fn':cnn_train, 'top_words':top_words, 'max_length':max_review_length, 'embedding_length':embedding_length, 'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
+            model = KerasClassifier(**preset)
         
     elif option == 'lstm':
         if len(preset)<1:
             model = KerasClassifier(build_fn=lstm_train, top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size = batch_size, nb_epoch = nb_epoch, verbose=1)
         else:
-            model = KerasClassifier(build_fn=lstm_train, top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size = batch_size, nb_epoch = nb_epoch, **preset, verbose=1)
+            preset.update({'build_fn':lstm_train, 'top_words':top_words, 'max_length':max_review_length, 'embedding_length':embedding_length, 'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})            
+            model = KerasClassifier(**preset)
 
     elif option == 'd_cnn':
         if len(preset)<1:
             model = KerasClassifier(build_fn=d_cnn_train, batch_size = batch_size, nb_epoch = nb_epoch, verbose = 1)
         else:
-            model = KerasClassifier(build_fn=d_cnn_train, batch_size = batch_size, nb_epoch = nb_epoch, **preset, verbose = 1)
+            preset.update({'build_fn':d_cnn_train, 'batch_size': batch_size, 'nb_epoch': nb_epoch, 'verbose':1})
+            model = KerasClassifier(**preset)
             
     elif option == 'd_lstm':
         if len(preset)<1:
             model = KerasClassifier(build_fn=d_lstm_train, batch_size = batch_size, nb_epoch = nb_epoch, verbose = 1)
         else:
-            model = KerasClassifier(build_fn=d_lstm_train, batch_size = batch_size, nb_epoch = nb_epoch, **preset, verbose = 1)
+            preset.update({'build_fn':d_lstm_train, 'batch_size': batch_size, 'nb_epoch': nb_epoch, 'verbose':1})
+            model = KerasClassifier(**preset)
  
 
     #param_grid = dict(top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size=batch_size, nb_epoch=epochs, optimizer = optimizer, learn_rate = learn_rate, momentum = momentum, neurons = neurons, dropout_W = dropout_W, dropout_U = dropout_U, W_regularizer = W_regularizer, U_regularizer = U_regularizer, init_mode = init_mode)
@@ -474,19 +477,29 @@ def deep_modeling(X, Y, V, t, top_words = 9444, max_review_length = 1000, embedd
     report(grid_result.cv_results_)
     return (grid_result)
 
-def testing(X_train, X,test, V_train, V_test, t_train, t_test, Y_train, Y_test, top_words = 9444, max_review_length = 1000, embedding_length = 300, batch_size = 128, nb_epoch =100, preset, option):
+def testing(X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test, top_words = 9444, max_review_length = 1000, embedding_length = 300, batch_size = 128, nb_epoch =100, preset = None, option = 'lstm'):
+    X_train = sequence.pad_sequences(X_train, maxlen = max_review_length)    
+    X_test = sequence.pad_sequences(X_test, maxlen=max_review_length)    
     if option == 'cnn':
-        model = KerasClassifier(build_fn=cnn_train, top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size = batch_size, nb_epoch = nb_epoch, **preset, verbose=1)
+        preset.update({'build_fn':cnn_train, 'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length, 'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
+        model = KerasClassifier(**preset)
     elif option == 'lstm':
-        model = KerasClassifier(build_fn=lstm_train, top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size = batch_size, nb_epoch = nb_epoch, **preset, verbose=1)
+        preset.update({'build_fn':lstm_train, 'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length, 'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
+        model = KerasClassifier(**preset)
     elif option == 'd_cnn':
-        model = KerasClassifier(build_fn=d_cnn_train, batch_size = batch_size, nb_epoch = nb_epoch, **preset, verbose = 1)
-    elif optioin == 'd_lstm':
-        model = KerasClassifier(build_fn=d_lstm_train, batch_size = batch_size, nb_epoch = nb_epoch, **preset, verbose = 1)
+        preset.update({'build_fn':d_cnn_train,'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
+        model = KerasClassifier(**preset)
+    elif option == 'd_lstm':
+        preset.update({'build_fn':d_lstm_train,'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
+        model = KerasClassifier(**preset)
     else: 
         print("ERROR AT TRAINING PHASE OF TESTING.")
     
-    model.fit(X_train, Y_train)
+    if option == 'cnn' or option == 'lstm':
+        model.fit(X_train,Y_train)
+    else:
+        model.fit(decay(x=np.array(V_train), t_stamps =t_train, embedding_length=embedding_length, max_review_length=max_review_length)[0], Y_train)
+
     predict =model.predict(X_test)
     acc = accuracy_score(Y_test, predict)
     f1 = f1_score(Y_test, predict)
@@ -508,7 +521,7 @@ if __name__ == '__main__':
     print ("Pickling...")
     with open ('/home/tangfeng/MIMIC/temp/admits.pkl', 'rb') as f:
         admits = pickle.load(f)
-
+    
     with open ('/home/tangfeng/MIMIC/temp/d.pkl', 'rb') as f:
         d = pickle.load(f)
     
