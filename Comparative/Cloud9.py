@@ -97,8 +97,8 @@ def main():
         with open ('/home/tangfeng/MIMIC/temp/pretrain/t_test.pkl', 'rb') as f:
             t_test = pickle.load(f)
     except:
-        pass
-    #X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test = get_split(admits = admits, sentences = sentences, lib = lib, dz = d)
+        print ("Pickling failed... Please try again.")
+        #X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test = get_split(admits = admits, sentences = sentences, lib = lib, dz = d)
     print ("Making Dictionary...")
     W_train, C_train, SG = decay(x= V_train, t_stamps = t_train, embedding_length= 300, max_review_length = 1000)     
     W_test, C_test = decay(x = V_test, t_stamps = t_test, embedding_length = 300, max_review_length = 1000, SG = SG)
@@ -466,7 +466,7 @@ if __name__ == '__main__':
     
     #with open ('/home/tangfeng/MIMIC/temp/sentences.pkl', 'rb') as f:
     #    sentences = pickle.load(f)
-    #print ("+++++++++++")
+    print ("+++++++++++")
 
         
     main()  
