@@ -184,10 +184,10 @@ def lstm_train(top_words, max_length, embedding_length, dropout_W = 0.2, dropout
 def decay(x, t_stamps, embedding_length, max_review_length, SG=0):
     decay = .0002
     C = []
-    print ("Making SG...")
     if SG ==0:
+        print ("Making SG...")
         SG = gensim.models.Word2Vec(sentences = x, sg = 1, size = embedding_length, window = 10, min_count = 50, hs = 1, negative = 0, workers = 4)
-    print ("SG embedding complete.")
+        print ("SG embedding complete.")
     for ii in range(len(t_stamps)):
         decay_factor=np.array([math.exp(-1 * decay * elapse.total_seconds()/3600) for elapse in t_stamps[ii]])
         v = np.array(list(map(lambda x: SG[x] if x in SG.wv.vocab else [0]*embedding_length, x[ii])))
