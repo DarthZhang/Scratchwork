@@ -22,6 +22,7 @@ from pandas.io import sql as transfer
 
 import numpy as np
 import gensim
+import cython
 #import glove
 import math
 import random
@@ -74,50 +75,59 @@ labitems_doc = '/mnt/research/data/MIMIC3/physionet.org/works/MIMICIIIClinicalDa
 patients_doc = '/mnt/research/data/MIMIC3/physionet.org/works/MIMICIIIClinicalDatabase/files/version_1_3/PATIENTS.csv.gz'
 
 def main():
-    #opt = input("(1) Random or (2) Grid:    ")
-    opt = 1
+
     np.random.seed(7)
-    options = ['d_cnn', 'd_lstm', 'cnn', 'lstm']
-        
-    try:
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/x_train.pkl', 'rb') as f:
-            X_train = pickle.load(f)
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/x_test.pkl', 'rb') as f:
-            X_test = pickle.load(f)
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/y_train.pkl', 'rb') as f:
-            Y_train = pickle.load(f)
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/y_test.pkl', 'rb') as f:
-            Y_test = pickle.load(f)
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/v_train.pkl', 'rb') as f:
-            V_train = pickle.load(f)
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/v_test.pkl', 'rb') as f:
-            V_test = pickle.load(f)
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/t_train.pkl', 'rb') as f:
-            t_train = pickle.load(f)   
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/t_test.pkl', 'rb') as f:
-            t_test = pickle.load(f)
-    except:
-        print ("Pickling failed... Please try again.")
-        #X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test = get_split(admits = admits, sentences = sentences, lib = lib, dz = d)
-    print ("Making Dictionary...")
-    W_train, C_train, SG = decay(x= V_train, t_stamps = t_train, embedding_length= 300, max_review_length = 1000)     
-    W_test, C_test = decay(x = V_test, t_stamps = t_test, embedding_length = 300, max_review_length = 1000, SG = SG)
-    print("...saving dictionary...")
-    model.save("/home/tangfeng/MIMIC/temp/pretrain/SG")
-    print ("Done.")        
+    options = ['cnn', 'lstm']
     
+        
+    with open ('/home/tangfeng/MIMIC/temp/admits.pkl', 'rb') as f:
+        admits = pickle.load(f)
+    
+    with open ('/home/tangfeng/MIMIC/temp/d.pkl', 'rb') as f:
+        d = pickle.load(f)
+        
+    with open ('/home/tangfeng/MIMIC/temp/lib.pkl', 'rb') as f:
+        lib = pickle.load(f)
+        
+    with open ('/home/tangfeng/MIMIC/temp/sentences.pkl', 'rb') as f:
+        sentences = pickle.load(f)
+    print ("Splitting dataset...")
+    X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test = get_split(admits = admits, sentences = sentences, lib = lib, dz = d)
+        
+    #print ("Making Dictionary...")
+    SG = gensim.models.Word2Vec(sentences = V_train, sg = 1, size = 300, window = 10, min_count = int(len(V_train)*.01), hs = 1, negative = 0)
+    print("...saving dictionary...")
+    SG.save("/home/tangfeng/MIMIC/temp/pretrain/SG")
+        
+    #print ("Making word vectors...")
+    W_train, C_train = decay(x= V_train, t_stamps = t_train, SG = SG)     
+    W_test, C_test = decay(x = V_test, t_stamps = t_test, SG = SG)
+    #print ("Done.")        
+    
+    #opt = input("(1) Random or (2) Grid:    ")
     for o in options:        
-        model = RandomSearch(X=X_train, Y=Y_train, V=W_train, t=t_train, option = o, nb_epoch = 10, cv = 2, n_iter_search = 20)
+        model = RandomSearch(X=X_train, Y=Y_train, V= V_train, option = o, nb_epoch = 16, cv = 3, n_iter_search = 32, jobs = -1)
         with open ("/home/tangfeng/MIMIC/results/randgrid_"+ str(o)+".pkl", 'wb') as f:
             pickle.dump(model.grid_scores_, f)
+        with open("/home/tangfeng/MIMIC/results/best_params_" + str(o)+".pkl", 'wb') as f:
+            pickle.dump(model.best_params_, f)
+    
+    classic = RandomSearch(X=X_train, Y=Y_train, V=C_train, t=t_train, option = 'classic', cv = 3, jobs = -1)
+    with open ("/home/tangfeng/MIMIC/results/classic_grid.pkl", 'wb') as f:
+        pickle.dump(classic.grid_scores_,f)
+    with open ("/home/tangfeng/MIMIC/results/classic_params.pkl", 'wb') as f:
+        pickle.dump(classic.best_params_,f)
         
-        scores = testing(X_train = X_train, X_test=X_test, V_train=W_train, V_test=W_test, t_train, t_test, Y_train, Y_test, preset=model.best_params_, option= o, nb_epoch = 20)
+        #if o!='classic':
+        #    X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test = get_split(admits = admits, sentences = sentences, lib = lib, dz = d)
+        #    scores = testing(X_train = X_train, X_test=X_test, V_train=W_train, V_test=W_test, t_train=t_train, t_test=t_test, Y_train=Y_train, Y_test = Y_test, preset=model.best_params_, option= o, nb_epoch = 50)
 
-        data = pd.DataFrame({'best_hyperparam': model.best_params_, 'acc': scores['acc'],
-                                 'f1': scores['f1'], 'auc':scores['auc']})
+       #     data = pd.DataFrame({'best_hyperparam': model.best_params_, 'acc': scores['acc'],
+        #                         'f1': scores['f1'], 'auc':scores['auc']})
                                  
-        with open ("/home/tangfeng/MIMIC/results/data_"+str(o)+".pkl", 'wb') as f:
-            pickle.dump(data, f)
+         #   with open ("/home/tangfeng/MIMIC/results/data_"+str(o)+".pkl", 'wb') as f:
+          #      pickle.dump(data, f)
+    
 
 ##### Models #####  
 def d_cnn_train(input_shape, dropout_W = 0.2, dropout_U = 0.2, optimizer = 'Adam', neurons = 100, learn_rate = .01, momentum= 0.0, W_regularizer = None, U_regularizer = None, init_mode = 'zero'):
@@ -181,14 +191,12 @@ def lstm_train(top_words, max_length, embedding_length, dropout_W = 0.2, dropout
     model.compile(loss = 'binary_crossentropy', optimizer = optimizer, metrics = ['accuracy'])
     return (model)
 
-def decay(x, t_stamps, embedding_length, max_review_length, SG=0):
+def decay(x, t_stamps, embedding_length=300, max_review_length=1000, SG = 0):
     decay = .0002
     C = []
-    if SG ==0:
-        print ("Making SG...")
-        SG = gensim.models.Word2Vec(sentences = x, sg = 1, size = embedding_length, window = 10, min_count = 50, hs = 1, negative = 0, workers = 4)
-        print ("SG embedding complete.")
+
     for ii in range(len(t_stamps)):
+        print (ii)
         decay_factor=np.array([math.exp(-1 * decay * elapse.total_seconds()/3600) for elapse in t_stamps[ii]])
         v = np.array(list(map(lambda x: SG[x] if x in SG.wv.vocab else [0]*embedding_length, x[ii])))
         w = np.array([np.multiply(v[index], decay_factor[index]) for index in range(len(decay_factor))])
@@ -207,10 +215,7 @@ def decay(x, t_stamps, embedding_length, max_review_length, SG=0):
             W[ii:,:] = w[:].reshape((1,max_review_length, embedding_length))       
             C = np.add(C, w)
     C.reshape(1, max_review_length, embedding_length)
-    if SG==0:
-        return (W, C, SG)
-    else:
-        return (W, C)
+    return (W, C)
     
 ##########################
 def get_split(admits, sentences, lib, dz):
@@ -284,7 +289,8 @@ def report(results, n_top=3):
             print("Parameters: {0}".format(results['params'][candidate]))
             print("")
             
-def RandomSearch(X=[], V= [], t=[], Y=[], top_words = 9444, max_review_length = 1000, embedding_length = 300, batch_size = 128, nb_epoch =10, option = 'cnn', cv=2, n_iter_search = 20, jobs = -1):
+### Random Search #####            
+def RandomSearch(X=[], Y = [], V = [], top_words = 9444, max_review_length = 1000, embedding_length = 300, batch_size = 128, nb_epoch =10, option = 'cnn', cv=2, n_iter_search = 20, jobs = -1):
     lr_params = {'C':sp_rand(.0001, 1000), 'penalty':('l1','l2')}
     sv_params = {'C':sp_rand(.0001,1000), 'kernel':('linear', 'poly', 'rbf', 'sigmoid')}
     rf_params = {'criterion': ['gini', 'entropy']}
@@ -330,14 +336,17 @@ def RandomSearch(X=[], V= [], t=[], Y=[], top_words = 9444, max_review_length = 
     report(results.cv_results_)
     return (results)
     
+    
+### Grid Search ###
+    
 def classic_modeling (V, t, Y, max_review_length = 1000, embedding_length = 300):
     lr_params = {'C':(10.0**np.arange(-4,4)).tolist(), 'penalty':('l1','l2')}
     sv_params = {'C':(10.0**np.arange(-4,4)).tolist(), 'kernel':('linear', 'poly', 'rbf', 'sigmoid')}
     rf_params = {'criterion': ['gini', 'entropy']}
     
     grid = GridSearchCV(estimator = (LR, SVM, RF), param_grid = (lr_params, sv_params, rf_params), scoring = 'roc_auc', n_jobs = -1, verbose = 1)
-    classics_result = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length)[1], Y)       
-    
+    #classics_result = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length)[1], Y)       
+    classics_result = grid.fit(V, Y)
     report(classics_result.cv_results_)
     return (classics_result)
  
@@ -454,86 +463,7 @@ if __name__ == '__main__':
    # (cli, args) = opt.parse_args()
    # opt.print_help()
 
-    #print ("Pickling...")
-    #with open ('/home/tangfeng/MIMIC/temp/admits.pkl', 'rb') as f:
-    #    admits = pickle.load(f)
-    
-    #with open ('/home/tangfeng/MIMIC/temp/d.pkl', 'rb') as f:
-    #    d = pickle.load(f)
-    
-    #with open ('/home/tangfeng/MIMIC/temp/lib.pkl', 'rb') as f:
-    #    lib = pickle.load(f)
-    
-    #with open ('/home/tangfeng/MIMIC/temp/sentences.pkl', 'rb') as f:
-    #    sentences = pickle.load(f)
     print ("+++++++++++")
 
         
     main()  
-    
-### SCRATCH #####
-'''    else:
-        lst = ['optimizer', 'learn_rate','dropout','regularizer', 'init_mode']
-        cnn_params = {}; lstm_params = {}; d_cnn_params = {}; d_lstm_params = {}
-        cnn_data = {}; lstm_data={}; d_cnn_data = {}; d_lstm_data = {}
-        for l in lst:
-            print ("Sess: {0}".format(l))
-            #X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test = get_split(admits = admits, sentences = sentences, lib = lib, dz = d)
-            cnn = deep_modeling(X_train=X_train, Y_train=Y_train, grid_option = l, preset=cnn_params, option = 'cnn')
-            cnn_params.update(cnn.best_params_)
-            lstm = deep_modeling(X_train=X_train, Y_train=Y_train, grid_option = l, preset=lstm_params, option = 'lstm')
-            lstm_params.update(lstm.best_params_)
-            d_cnn = deep_modeling(X_train=X_train, Y_train=Y_train, grid_option = l, preset=d_cnn_params, option = 'd_cnn')
-            d_cnn_params.update(d_cnn.best_params_)
-            d_lstm = deep_modeling(X_train=X_train, Y_train=Y_train, grid_option = l, preset=d_lstm_params, option = 'd_lstm')
-            d_lstm_params.update(d_lstm.best_params_)
-        
-            cnn_scores = testing(X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=cnn_params, option= 'cnn')
-            lstm_scores = testing(X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=lstm_params, option= 'lstm')
-
-            d_cnn_scores = testing(X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=d_cnn_params, option= 'd_cnn')
-            d_lstm_scores = testing(X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test, preset=d_lstm_params, option= 'd_lstm')
-
-            if l==lst[0]:
-                cnn_data = pd.DataFrame({'best_hyperparam': cnn.best_params_, 'acc': cnn_scores['acc'],
-                                 'f1': cnn_scores['f1'], 'auc':cnn_scores['auc']})
-                lstm_data = pd.DataFrame({'best_hyperparam': lstm.best_params_, 'acc': lstm_scores['acc'],
-                                 'f1': lstm_scores['f1'], 'auc':lstm_scores['auc']})
-                d_cnn_data = pd.DataFrame({'best_hyperparam': d_cnn.best_params_, 'acc': d_cnn_scores['acc'],
-                                 'f1': d_cnn_scores['f1'], 'auc':d_cnn_scores['auc']})
-                d_lstm_data = pd.DataFrame({'best_hyperparam': d_lstm.best_params_, 'acc': d_lstm_scores['acc'],
-                                 'f1': d_lstm_scores['f1'], 'auc':d_lstm_scores['auc']}) 
-            else:
-                temp = pd.DataFrame({'best_hyperparam': cnn.best_params_, 'acc': cnn_scores['acc'],
-                                 'f1': cnn_scores['f1'], 'auc':cnn_scores['auc']})
-                cnn_data = cnn_data.append(temp)
-            
-                temp = pd.DataFrame({'best_hyperparam': lstm.best_params_,'acc': lstm_scores['acc'],
-                                 'f1': lstm_scores['f1'], 'auc':lstm_scores['auc']})
-                lstm_data = lstm_data.append(temp)
-            
-                temp = pd.DataFrame({'best_hyperparam': d_cnn.best_params_, 'acc': d_cnn_scores['acc'],
-                                 'f1': d_cnn_scores['f1'], 'auc':d_cnn_scores['auc']})
-                d_cnn_data = d_cnn_data.append(temp)                             
-            
-                temp = pd.DataFrame({'best_hyperparam': d_lstm.best_params_, 'acc': d_lstm_scores['acc'],
-                                 'f1': d_lstm_scores['f1'], 'auc':d_lstm_scores['auc']}) 
-                d_lstm_data = d_lstm_data.append(temp)
-                
-            with open ("/home/tangfeng/MIMIC/results/cnn_grid_"+str(l)+".pkl", 'wb') as f:
-                pickle.dump(cnn.grid_scores, f)
-            with open ("/home/tangfeng/MIMIC/results/lstm_grid_"+str(l)+".pkl", 'wb') as f:
-                pickle.dump(lstm.grid_scores, f)
-            with open ("/home/tangfeng/MIMIC/results/d_cnn_grid_"+str(l)+".pkl", 'wb') as f:
-                pickle.dump(d_cnn.grid_scores, f)
-            with open ("/home/tangfeng/MIMIC/results/d_lstm_grid_"+str(l)+".pkl", 'wb') as f:
-                pickle.dump(d_lstm.grid_scores, f)
-       
-    #with open ("/home/tangfeng/MIMIC/results/cnn_data.pkl", 'wb') as f:
-    #    pickle.dump(cnn_data, f)
-    #with open ("/home/tangfeng/MIMIC/results/lstm_data.pkl", 'wb') as f:
-    #    pickle.dump(lstm_data, f)
-    #with open ("/home/tangfeng/MIMIC/results/d_cnn_data.pkl", 'wb') as f:
-    #    pickle.dump(d_cnn_data, f)
-'''
-
