@@ -6,7 +6,8 @@ Created on Sat Feb 25 13:59:57 2017
 """
 
 import sys
-import cPickle as pickle
+import pickle
+#import cPickle as pickle
 import os.path as path
 
 import csv
@@ -58,6 +59,11 @@ from keras.regularizers import l1, l2
 
 #MEMMAP
 from tempfile import mkdtemp
+file_a = path.join(mkdtemp(), 'Xfiles.dat') #sentences
+file_b = path.join(mkdtemp(), 'Yfiles.dat') #x_train
+file_c = path.join(mkdtemp(), 'Zfiles.dat') #w_train
+file_d = path.join(mkdtemp(), 'AAfiles.dat') #x_test
+file_e = path.join(mkdtemp(), 'ABfiles.dat') #w_test
 #remember to export CUDAs...
 #export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
 #export CUDA_HOME=/usr/local/cuda
@@ -79,44 +85,68 @@ def main():
     np.random.seed(7)
     options = ['cnn', 'lstm']
     
-        
-    with open ('/home/tangfeng/MIMIC/temp/admits.pkl', 'rb') as f:
-        admits = pickle.load(f)
+    try:
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/x_train.pkl', 'rb') as f:
+            X_train = pickle.load(f)
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/x_test.pkl', 'rb') as f:
+            X_test = pickle.load(f)
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/y_train.pkl', 'rb') as f:
+            Y_train = pickle.load(f)
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/y_test.pkl', 'rb') as f:
+            Y_test = pickle.load(f)
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/v_train.pkl', 'rb') as f:
+            V_train = pickle.load(f)
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/v_test.pkl', 'rb') as f:
+            V_test = pickle.load(f)
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/t_train.pkl', 'rb') as f:
+            t_train = pickle.load(f)   
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/t_test.pkl', 'rb') as f:
+            t_test = pickle.load(f)
+    except:
+        with open ('/home/andy/Desktop/MIMIC/temp/admits.pkl', 'rb') as f:
+            admits = pickle.load(f)
     
-    with open ('/home/tangfeng/MIMIC/temp/d.pkl', 'rb') as f:
-        d = pickle.load(f)
+        with open ('/home/andy/Desktop/MIMIC/temp/d.pkl', 'rb') as f:
+            d = pickle.load(f)
         
-    with open ('/home/tangfeng/MIMIC/temp/lib.pkl', 'rb') as f:
-        lib = pickle.load(f)
+        with open ('/home/andy/Desktop/MIMIC/temp/lib.pkl', 'rb') as f:
+            lib = pickle.load(f)
         
-    with open ('/home/tangfeng/MIMIC/temp/sentences.pkl', 'rb') as f:
-        sentences = pickle.load(f)
-    print ("Splitting dataset...")
-    X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test = get_split(admits = admits, sentences = sentences, lib = lib, dz = d)
-        
-    #print ("Making Dictionary...")
-    SG = gensim.models.Word2Vec(sentences = V_train, sg = 1, size = 300, window = 10, min_count = int(len(V_train)*.01), hs = 1, negative = 0)
-    print("...saving dictionary...")
-    SG.save("/home/tangfeng/MIMIC/temp/pretrain/SG")
-        
+        with open ('/home/andy/Desktop/MIMIC/temp/sentences.pkl', 'rb') as f:
+            sentences = pickle.load(f)
+        print ("Splitting dataset...")
+        X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test = get_split(admits = admits, sentences = sentences, lib = lib, dz = d)
+        del sentences
+    try:
+        SG = gensim.models.Word2Vec.load('/home/andy/Desktop/MIMIC/temp/pretrain/SG')
+        print ("Dictionary loaded.")
+    except:
+        print ("Making Dictionary...")
+        V_train = [np.ndarray.tolist(i) for i in V_train]
+        #Do NOT forget the previous step; it is very important to convert sentence to regular python list... otherwise it'll take forever.
+        SG = gensim.models.Word2Vec(sentences = V_train, sg = 1, size = 300, window = 10, min_count = int(len(V_train)*.01), hs = 1, negative = 0)
+        print("...saving dictionary...")
+        SG.save("/home/andy/Desktop/MIMIC/temp/pretrain/SG")
+    
+      
     #print ("Making word vectors...")
-    W_train, C_train = decay(x= V_train, t_stamps = t_train, SG = SG)     
-    W_test, C_test = decay(x = V_test, t_stamps = t_test, SG = SG)
+    #W_train, C_train = decay(x= V_train, t_stamps = t_train, SG = SG)     
+    #W_test, C_test = decay(x = V_test, t_stamps = t_test, SG = SG)
     #print ("Done.")        
     
     #opt = input("(1) Random or (2) Grid:    ")
     for o in options:        
-        model = RandomSearch(X=X_train, Y=Y_train, V= V_train, option = o, nb_epoch = 16, cv = 3, n_iter_search = 32, jobs = -1)
-        with open ("/home/tangfeng/MIMIC/results/randgrid_"+ str(o)+".pkl", 'wb') as f:
+        model = RandomSearch(X=X_train, Y=Y_train, V= V_train, t = t_train, SG = SG, option = o, nb_epoch = 16, cv = 3, n_iter_search = 32, jobs = 1)
+        with open ("/home/andy/Desktop/MIMIC/results/randgrid_"+ str(o)+".pkl", 'wb') as f:
             pickle.dump(model.grid_scores_, f)
-        with open("/home/tangfeng/MIMIC/results/best_params_" + str(o)+".pkl", 'wb') as f:
+        with open("/home/andy/Desktop/MIMIC/results/best_params_" + str(o)+".pkl", 'wb') as f:
             pickle.dump(model.best_params_, f)
     
-    classic = RandomSearch(X=X_train, Y=Y_train, V=C_train, t=t_train, option = 'classic', cv = 3, jobs = -1)
-    with open ("/home/tangfeng/MIMIC/results/classic_grid.pkl", 'wb') as f:
-        pickle.dump(classic.grid_scores_,f)
-    with open ("/home/tangfeng/MIMIC/results/classic_params.pkl", 'wb') as f:
-        pickle.dump(classic.best_params_,f)
+    #classic = RandomSearch(X=X_train, Y=Y_train, V=C_train, t=t_train, option = 'classic', cv = 3, jobs = 1)
+    #with open ("/home/andy/Desktop/MIMIC/results/classic_grid.pkl", 'wb') as f:
+    #    pickle.dump(classic.grid_scores_,f)
+    #with open ("/home/andy/Desktop/MIMIC/results/classic_params.pkl", 'wb') as f:
+    #    pickle.dump(classic.best_params_,f)
         
         #if o!='classic':
         #    X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test = get_split(admits = admits, sentences = sentences, lib = lib, dz = d)
@@ -194,6 +224,8 @@ def lstm_train(top_words, max_length, embedding_length, dropout_W = 0.2, dropout
 def decay(x, t_stamps, embedding_length=300, max_review_length=1000, SG = 0):
     decay = .0002
     C = []
+    if SG ==0:
+        print ("error")
 
     for ii in range(len(t_stamps)):
         print (ii)
@@ -207,11 +239,11 @@ def decay(x, t_stamps, embedding_length=300, max_review_length=1000, SG = 0):
             w = w[0:max_review_length]
         
         if ii == 0:
-            W = np.memmap('w_train.mymemmap', mode = 'w+', shape = (1, w.shape[0], w.shape[1]), dtype = 'object')
+            W = np.memmap(file_a, mode = 'w+', shape = (1, w.shape[0], w.shape[1]), dtype = 'object')
             W[:] = w[:].reshape((1,max_review_length, embedding_length))
             C = w
         else:
-            W= np.memmap('w_train.mymemmap', mode = 'r+', shape = (ii+1, w.shape[0], w.shape[1]), dtype = 'object')
+            W= np.memmap(file_a, mode = 'r+', shape = (ii+1, w.shape[0], w.shape[1]), dtype = 'object')
             W[ii:,:] = w[:].reshape((1,max_review_length, embedding_length))       
             C = np.add(C, w)
     C.reshape(1, max_review_length, embedding_length)
@@ -290,7 +322,7 @@ def report(results, n_top=3):
             print("")
             
 ### Random Search #####            
-def RandomSearch(X=[], Y = [], V = [], top_words = 9444, max_review_length = 1000, embedding_length = 300, batch_size = 128, nb_epoch =10, option = 'cnn', cv=2, n_iter_search = 20, jobs = -1):
+def RandomSearch(X=[], Y = [], V = [], t = [], SG = 0, top_words = 9444, max_review_length = 1000, embedding_length = 300, batch_size = 128, nb_epoch =10, option = 'cnn', cv=2, n_iter_search = 20, jobs = -1):
     lr_params = {'C':sp_rand(.0001, 1000), 'penalty':('l1','l2')}
     sv_params = {'C':sp_rand(.0001,1000), 'kernel':('linear', 'poly', 'rbf', 'sigmoid')}
     rf_params = {'criterion': ['gini', 'entropy']}
@@ -310,8 +342,8 @@ def RandomSearch(X=[], Y = [], V = [], top_words = 9444, max_review_length = 100
     
     if option == 'classic':    
         grid = RandomizedSearchCV(estimator = (LR, SVM, RF), param_distributions = (lr_params, sv_params, rf_params), scoring = 'roc_auc', n_jobs = jobs, n_iter=n_iter_search, verbose = 1)
-        #results = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length)[1], Y)       
-        results = grid.fit(V,Y)
+        results = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length, SG = SG)[1], Y)       
+        #results = grid.fit(V,Y)
     elif option == 'cnn':
         model = KerasClassifier(build_fn=cnn_train, top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size = batch_size, nb_epoch = nb_epoch, verbose=1)
         grid = RandomizedSearchCV(estimator=model, param_distributions=params,  cv = cv, n_jobs=jobs, n_iter=n_iter_search, verbose = 1)
@@ -325,33 +357,33 @@ def RandomSearch(X=[], Y = [], V = [], top_words = 9444, max_review_length = 100
     elif option == 'd_cnn':
         model = KerasClassifier(build_fn=d_cnn_train, batch_size = batch_size, nb_epoch = nb_epoch, verbose = 1)
         grid = RandomizedSearchCV(estimator=model, param_distributions=params, cv = cv, n_jobs=jobs, n_iter=n_iter_search, verbose = 1)
-        #results = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length)[0], Y)
-        results = grid.fit(V, Y)
+        results = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length, SG = SG)[0], Y)
+        #results = grid.fit(V, Y)
         
     elif option == 'd_lstm':
         model = KerasClassifier(build_fn=d_lstm_train, batch_size = batch_size, nb_epoch = nb_epoch, verbose = 1)
         grid = RandomizedSearchCV(estimator=model, param_distributions=params, cv = cv, n_jobs=jobs, n_iter=n_iter_search, verbose = 1)
-        #results = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length)[0], Y)
-        results = grid.fit(V,Y)
+        results = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length, SG = SG)[0], Y)
+        #results = grid.fit(V,Y)
     report(results.cv_results_)
     return (results)
     
     
 ### Grid Search ###
     
-def classic_modeling (V, t, Y, max_review_length = 1000, embedding_length = 300):
+def classic_modeling (V, t, Y, SG, max_review_length = 1000, embedding_length = 300):
     lr_params = {'C':(10.0**np.arange(-4,4)).tolist(), 'penalty':('l1','l2')}
     sv_params = {'C':(10.0**np.arange(-4,4)).tolist(), 'kernel':('linear', 'poly', 'rbf', 'sigmoid')}
     rf_params = {'criterion': ['gini', 'entropy']}
     
     grid = GridSearchCV(estimator = (LR, SVM, RF), param_grid = (lr_params, sv_params, rf_params), scoring = 'roc_auc', n_jobs = -1, verbose = 1)
-    #classics_result = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length)[1], Y)       
-    classics_result = grid.fit(V, Y)
+    classics_result = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length, SG = SG)[1], Y)       
+    #classics_result = grid.fit(V, Y)
     report(classics_result.cv_results_)
     return (classics_result)
  
     
-def deep_modeling(X, Y, V, t, top_words = 9444, max_review_length = 1000, embedding_length = 300, batch_size = 128, nb_epoch =100, option = 'cnn', grid_option='init_mode', preset = None):
+def deep_modeling(X, Y, V, t, SG, top_words = 9444, max_review_length = 1000, embedding_length = 300, batch_size = 128, nb_epoch =100, option = 'cnn', grid_option='init_mode', preset = None):
     
     # define the grid search parameters
     optimizer = ['SGD', 'RMSprop', 'Adam']
@@ -417,7 +449,7 @@ def deep_modeling(X, Y, V, t, top_words = 9444, max_review_length = 1000, embedd
     if option == 'cnn' or option == 'lstm':
         grid_result = grid.fit(X_train,Y)
     else:
-        grid_result = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length)[0], Y)
+        grid_result = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length, SG = SG)[0], Y)
 
     report(grid_result.cv_results_)
     return (grid_result)
