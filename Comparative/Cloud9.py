@@ -426,18 +426,20 @@ def classic_modeling (V, t, Y, SG, max_review_length = 1000, embedding_length = 
     report(classics_result.cv_results_)
     return (classics_result)
 
-def grid_search (x, y, v, t, SG, top_words = 9444, max_review_length=1000, embedding_length =300, batch_size = 128, nb_epoch=16, option = 'd_cnn', param_grid = {}, preset = {}):       
+def grid_search (x, y, v, t, SG, top_words = 9444, max_review_length=1000, embedding_length =300, batch_size = 128, nb_epoch=16, n_jobs = 1, option = 'd_cnn', param_grid = {}, preset = {}):       
     x = sequence.pad_sequences (x, maxlen=max_review_length)
     if option == 'cnn':
-        model = KerasClassifier(build_fn=cnn_train, top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size = batch_size, nb_epoch = nb_epoch, verbose=1)
-        grid = GridSearchCV(estimator=model, param_grid=param_grid, cv = 5, n_jobs=-1, verbose = 1)
+        preset.update({'build_fn':cnn_train, 'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length, 'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
+        model = KerasClassifier(**preset)
+        grid = GridSearchCV(estimator=model, param_grid=param_grid, cv = 3, n_jobs=n_jobs, verbose = 1)
         grid_result = grid.fit(x, y)
         report(grid_result.cv_results_)
         return (grid_result)
 
     elif option == 'lstm':
-        model = KerasClassifier(build_fn=lstm_train, top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size = batch_size, nb_epoch = nb_epoch, verbose=1)
-        grid = GridSearchCV(estimator=model, param_grid=param_grid, cv = 5, n_jobs=-1, verbose = 1)
+        preset.update({'build_fn':lstm_train, 'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length, 'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
+        model = KerasClassifier(**preset)
+        grid = GridSearchCV(estimator=model, param_grid=param_grid, cv = 3, n_jobs=n_jobs, verbose = 1)
         grid_result = grid.fit(x, y)
         report(grid_result.cv_results_)
         return (grid_result)
@@ -461,8 +463,8 @@ def grid_search (x, y, v, t, SG, top_words = 9444, max_review_length=1000, embed
                 x_train, x_test = x[train], x[test]
                 y_train, y_test = y[train], y[test]
                 t_train, t_test = t[train], t[test]
-                model.fit_generator(decay_generator(x = x_train, y = y_train, t_stamps = t_train, SG = SG), samples_per_epoch = len(x_train), nb_epoch = nb_epoch, nb_worker=-1)
-                score = model.evaluate_generator(decay_generator(x = x_test, y = y_test, t_stamps = t_test, SG = SG), val_samples = len(x_test), nb_worker = -1)
+                model.fit_generator(decay_generator(x = x_train, y = y_train, t_stamps = t_train, SG = SG), samples_per_epoch = len(x_train), nb_epoch = nb_epoch, nb_worker=n_jobs)
+                score = model.evaluate_generator(decay_generator(x = x_test, y = y_test, t_stamps = t_test, SG = SG), val_samples = len(x_test), nb_worker = n_jobs)
                 print("%s: %.2f%%" % model.metrics_names[1], score*100)
                 cvscore.append(score[1]*100)
             temp = {'model':option, key:kk, 'mean_score': np.mean(cvscore), 'std': np.std(cvscore)}
