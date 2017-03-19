@@ -29,6 +29,8 @@ import math
 import random
 import datetime
 #import matplotlib.pyplot as plt
+import logging
+import threading
 import re
 
 from scipy import stats
@@ -83,7 +85,7 @@ patients_doc = '/mnt/research/data/MIMIC3/physionet.org/works/MIMICIIIClinicalDa
 def main():
 
     np.random.seed(7)
-    options = ['cnn', 'lstm']
+    options = ['classic', 'cnn', 'lstm']
     
     try:
         with open ('/home/andy/Desktop/MIMIC/temp/pretrain/x_train.pkl', 'rb') as f:
@@ -220,14 +222,61 @@ def lstm_train(top_words, max_length, embedding_length, dropout_W = 0.2, dropout
         optimizer = Adam(lr=learn_rate)
     model.compile(loss = 'binary_crossentropy', optimizer = optimizer, metrics = ['accuracy'])
     return (model)
+    
+##### BATCH THREAD SAFE GENERATORS #####
+class threadsafe_iter:
+    def __init__(self,it):
+        self.it = it
+        self.lock = threading.Lock();
+    
+    def __iter__(self):
+        return (self)
+    
+    def next(self):
+        with self.lock:
+            return (self.it.next())
 
-def decay(x, t_stamps, embedding_length=300, max_review_length=1000, SG = 0):
+def threadsafe_generator(f):
+    def g(*a, **kw):
+        return (threadsafe_iter(f(*a, **kw)))
+    return (g)
+
+def decay_generator(x, y, t_stamps, embedding_length=300, max_review_length=1000, SG=0):
+    lst = []
+    #for i in xrange(0,len(x), 128):
+    for i in range(0, len(x), 128):
+        lst.append(i)
+    lst.append(len(x))
+    
     decay = .0002
-    C = []
     if SG ==0:
-        print ("error")
+        print ("dictionary not defined")
+        return ([])
+        
+    while True:
+        W = []
+        for ii in range (len(x)):
+            #print (ii)
+            decay_factor=np.array([math.exp(-1 * decay * elapse.total_seconds()/3600) for elapse in t_stamps[ii]])
+            v = np.array(list(map(lambda x: SG[x] if x in SG.wv.vocab else [0]*embedding_length, x[ii])))
+            w = np.array([np.multiply(v[index], decay_factor[index]) for index in range(len(decay_factor))])
+            if w.shape[0]<max_review_length:
+                temp = np.array([[0]*embedding_length for jjj in range(max_review_length-len(v))])
+                w = np.concatenate((w,temp))
+            elif len(w) > max_review_length:
+                w = w[0:max_review_length]
+            W.append(w)
+            if (ii+1 in lst) and ii>0:
+                yield(np.array(W), y[lst[lst.index(ii+1)-1]:lst[lst.index(ii+1)]])
+                W= []
 
-    for ii in range(len(t_stamps)):
+        
+def decay_norm (x, t_stamps, embedding_length=300, max_review_length=1000, SG=0):
+    decay = .0002
+    if SG ==0:
+        print ("dictionary not defined")
+        return ([])
+    for ii in range (len(t_stamps)):
         print (ii)
         decay_factor=np.array([math.exp(-1 * decay * elapse.total_seconds()/3600) for elapse in t_stamps[ii]])
         v = np.array(list(map(lambda x: SG[x] if x in SG.wv.vocab else [0]*embedding_length, x[ii])))
@@ -237,17 +286,12 @@ def decay(x, t_stamps, embedding_length=300, max_review_length=1000, SG = 0):
             w = np.concatenate((w,temp))
         elif len(w) > max_review_length:
             w = w[0:max_review_length]
-        
         if ii == 0:
-            W = np.memmap(file_a, mode = 'w+', shape = (1, w.shape[0], w.shape[1]), dtype = 'object')
-            W[:] = w[:].reshape((1,max_review_length, embedding_length))
             C = w
         else:
-            W= np.memmap(file_a, mode = 'r+', shape = (ii+1, w.shape[0], w.shape[1]), dtype = 'object')
-            W[ii:,:] = w[:].reshape((1,max_review_length, embedding_length))       
-            C = np.add(C, w)
-    C.reshape(1, max_review_length, embedding_length)
-    return (W, C)
+            C = np.add(C,w)
+    return (C)
+        
     
 ##########################
 def get_split(admits, sentences, lib, dz):
@@ -342,7 +386,7 @@ def RandomSearch(X=[], Y = [], V = [], t = [], SG = 0, top_words = 9444, max_rev
     
     if option == 'classic':    
         grid = RandomizedSearchCV(estimator = (LR, SVM, RF), param_distributions = (lr_params, sv_params, rf_params), scoring = 'roc_auc', n_jobs = jobs, n_iter=n_iter_search, verbose = 1)
-        results = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length, SG = SG)[1], Y)       
+        results = grid.fit(decay_norm(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length, SG = SG), Y)       
         #results = grid.fit(V,Y)
     elif option == 'cnn':
         model = KerasClassifier(build_fn=cnn_train, top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size = batch_size, nb_epoch = nb_epoch, verbose=1)
@@ -357,13 +401,13 @@ def RandomSearch(X=[], Y = [], V = [], t = [], SG = 0, top_words = 9444, max_rev
     elif option == 'd_cnn':
         model = KerasClassifier(build_fn=d_cnn_train, batch_size = batch_size, nb_epoch = nb_epoch, verbose = 1)
         grid = RandomizedSearchCV(estimator=model, param_distributions=params, cv = cv, n_jobs=jobs, n_iter=n_iter_search, verbose = 1)
-        results = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length, SG = SG)[0], Y)
+        results = grid.fit(decay_generator(x=np.array(V), y = Y, t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length, SG = SG), Y)
         #results = grid.fit(V, Y)
         
     elif option == 'd_lstm':
         model = KerasClassifier(build_fn=d_lstm_train, batch_size = batch_size, nb_epoch = nb_epoch, verbose = 1)
         grid = RandomizedSearchCV(estimator=model, param_distributions=params, cv = cv, n_jobs=jobs, n_iter=n_iter_search, verbose = 1)
-        results = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length, SG = SG)[0], Y)
+        results = grid.fit(decay_generator(x=np.array(V), y = Y, t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length, SG = SG), Y)
         #results = grid.fit(V,Y)
     report(results.cv_results_)
     return (results)
@@ -377,11 +421,114 @@ def classic_modeling (V, t, Y, SG, max_review_length = 1000, embedding_length = 
     rf_params = {'criterion': ['gini', 'entropy']}
     
     grid = GridSearchCV(estimator = (LR, SVM, RF), param_grid = (lr_params, sv_params, rf_params), scoring = 'roc_auc', n_jobs = -1, verbose = 1)
-    classics_result = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length, SG = SG)[1], Y)       
+    classics_result = grid.fit(decay_norm(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length, SG = SG), Y)       
     #classics_result = grid.fit(V, Y)
     report(classics_result.cv_results_)
     return (classics_result)
- 
+
+def grid_search (x, y, v, t, SG, top_words = 9444, max_review_length=1000, embedding_length =300, batch_size = 128, nb_epoch=16, option = 'd_cnn', param_grid = {}, preset = {}):       
+    x = sequence.pad_sequences (x, maxlen=max_review_length)
+    if option == 'cnn':
+        model = KerasClassifier(build_fn=cnn_train, top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size = batch_size, nb_epoch = nb_epoch, verbose=1)
+        grid = GridSearchCV(estimator=model, param_grid=param_grid, cv = 5, n_jobs=-1, verbose = 1)
+        grid_result = grid.fit(x, y)
+        report(grid_result.cv_results_)
+        return (grid_result)
+
+    elif option == 'lstm':
+        model = KerasClassifier(build_fn=lstm_train, top_words=top_words, max_length = max_review_length, embedding_length = embedding_length, batch_size = batch_size, nb_epoch = nb_epoch, verbose=1)
+        grid = GridSearchCV(estimator=model, param_grid=param_grid, cv = 5, n_jobs=-1, verbose = 1)
+        grid_result = grid.fit(x, y)
+        report(grid_result.cv_results_)
+        return (grid_result)
+
+    data = []
+    x = np.array(x)     #convert to numpy form before splitting
+    y = np.array(y)
+    t = np.array(t)
+    #for key, value in param_grid.iteritems():
+    for key, value in param_grid.items():
+        for kk in value:
+            print (key, kk)
+            preset.update({'input_shape': (max_review_length, embedding_length), key:kk})
+            if option == 'd_cnn':
+                model = d_cnn_train(**preset)
+            elif option == 'd_lstm':
+                model = d_lstm_train(**preset)
+            skf = StratifiedKFold (n_splits = 3, shuffle = True, random_state = 8)
+            cvscore = []
+            for train, test in skf.split(x, y):
+                x_train, x_test = x[train], x[test]
+                y_train, y_test = y[train], y[test]
+                t_train, t_test = t[train], t[test]
+                model.fit_generator(decay_generator(x = x_train, y = y_train, t_stamps = t_train, SG = SG), samples_per_epoch = len(x_train), nb_epoch = nb_epoch, nb_worker=-1)
+                score = model.evaluate_generator(decay_generator(x = x_test, y = y_test, t_stamps = t_test, SG = SG), val_samples = len(x_test), nb_worker = -1)
+                print("%s: %.2f%%" % model.metrics_names[1], score*100)
+                cvscore.append(score[1]*100)
+            temp = {'model':option, key:kk, 'mean_score': np.mean(cvscore), 'std': np.std(cvscore)}
+            data.append(temp)   
+    return (data)
+
+def testing(X_train=[], X_test=[], V_train=[], V_test=[], t_train=[], t_test=[], Y_train=[], Y_test=[], top_words = 9444, max_review_length = 1000, embedding_length = 300, batch_size = 128, nb_epoch =100, preset = {}, option = 'lstm'):
+    X_train = sequence.pad_sequences(X_train, maxlen = max_review_length)    
+    X_test = sequence.pad_sequences(X_test, maxlen=max_review_length)    
+    if option == 'cnn':
+        preset.update({'build_fn':cnn_train, 'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length, 'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
+        model = KerasClassifier(**preset)
+    elif option == 'lstm':
+        preset.update({'build_fn':lstm_train, 'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length, 'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
+        model = KerasClassifier(**preset)
+    elif option == 'd_cnn':
+        preset.update({'build_fn':d_cnn_train,'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
+        model = KerasClassifier(**preset)
+    elif option == 'd_lstm':
+        preset.update({'build_fn':d_lstm_train,'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
+        model = KerasClassifier(**preset)
+    else: 
+        print("ERROR AT TRAINING PHASE OF TESTING.")
+    
+    if option == 'cnn' or option == 'lstm':
+        model.fit(X_train,Y_train)
+    elif option == 'classic':
+        model.fit(decay_norm(x=np.array(V_train), t_stamps =t_train, embedding_length=embedding_length, max_review_length=max_review_length)[0], Y_train)
+
+    predict =model.predict(X_test)
+    acc = accuracy_score(Y_test, predict)
+    f1 = f1_score(Y_test, predict)
+    auc = roc_auc_score(Y_test, predict)
+    return ({'acc': acc, 'f1':f1, 'auc':auc})
+    
+##############################
+
+if __name__ == '__main__':
+   # from optparse import OptionParser, OptionGroup
+   # desc = "Welcome to PipeLiner by af1tang."
+   # version = "version 1.0"
+   # opt = OptionParser (description = desc, version=version)
+   # opt.add_option ('-i', action = 'store', type ='string', dest='input', help='Please input path to Database File.')
+   # opt.add_option ('-o', action = 'store', type = 'string', dest='output', default='CHF_data.pickle', help='Please state desired storage file for this session.')
+   # (cli, args) = opt.parse_args()
+   # opt.print_help()
+
+    print ("+++++++++++")
+
+        
+    main()  
+
+##### SCRATCH WORK #####
+
+   #     if ii == 0:
+   #         W = np.memmap(file_a, mode = 'w+', shape = (1, w.shape[0], w.shape[1]), dtype = 'object')
+   #         W[:] = w[:].reshape((1,max_review_length, embedding_length))
+   #         C = w
+   #     else:
+   #         W= np.memmap(file_a, mode = 'r+', shape = (ii+1, w.shape[0], w.shape[1]), dtype = 'object')
+   #         W[ii:,:] = w[:].reshape((1,max_review_length, embedding_length))       
+   #         C = np.add(C, w)
+    #C.reshape(1, max_review_length, embedding_length)
+    #return (W, C)
+
+'''
     
 def deep_modeling(X, Y, V, t, SG, top_words = 9444, max_review_length = 1000, embedding_length = 300, batch_size = 128, nb_epoch =100, option = 'cnn', grid_option='init_mode', preset = None):
     
@@ -448,54 +595,9 @@ def deep_modeling(X, Y, V, t, SG, top_words = 9444, max_review_length = 1000, em
     # Fit the model
     if option == 'cnn' or option == 'lstm':
         grid_result = grid.fit(X_train,Y)
-    else:
-        grid_result = grid.fit(decay(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length, SG = SG)[0], Y)
+    elif option == 'classic':
+        grid_result = grid.fit(decay_generator(x=np.array(V), t_stamps =t, embedding_length=embedding_length, max_review_length=max_review_length, SG = SG)[0], Y)
 
     report(grid_result.cv_results_)
     return (grid_result)
-
-def testing(X_train=[], X_test=[], V_train=[], V_test=[], t_train=[], t_test=[], Y_train=[], Y_test=[], top_words = 9444, max_review_length = 1000, embedding_length = 300, batch_size = 128, nb_epoch =100, preset = None, option = 'lstm'):
-    X_train = sequence.pad_sequences(X_train, maxlen = max_review_length)    
-    X_test = sequence.pad_sequences(X_test, maxlen=max_review_length)    
-    if option == 'cnn':
-        preset.update({'build_fn':cnn_train, 'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length, 'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
-        model = KerasClassifier(**preset)
-    elif option == 'lstm':
-        preset.update({'build_fn':lstm_train, 'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length, 'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
-        model = KerasClassifier(**preset)
-    elif option == 'd_cnn':
-        preset.update({'build_fn':d_cnn_train,'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
-        model = KerasClassifier(**preset)
-    elif option == 'd_lstm':
-        preset.update({'build_fn':d_lstm_train,'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
-        model = KerasClassifier(**preset)
-    else: 
-        print("ERROR AT TRAINING PHASE OF TESTING.")
-    
-    if option == 'cnn' or option == 'lstm':
-        model.fit(X_train,Y_train)
-    else:
-        model.fit(decay(x=np.array(V_train), t_stamps =t_train, embedding_length=embedding_length, max_review_length=max_review_length)[0], Y_train)
-
-    predict =model.predict(X_test)
-    acc = accuracy_score(Y_test, predict)
-    f1 = f1_score(Y_test, predict)
-    auc = roc_auc_score(Y_test, predict)
-    return ({'acc': acc, 'f1':f1, 'auc':auc})
-    
-##############################
-
-if __name__ == '__main__':
-   # from optparse import OptionParser, OptionGroup
-   # desc = "Welcome to PipeLiner by af1tang."
-   # version = "version 1.0"
-   # opt = OptionParser (description = desc, version=version)
-   # opt.add_option ('-i', action = 'store', type ='string', dest='input', help='Please input path to Database File.')
-   # opt.add_option ('-o', action = 'store', type = 'string', dest='output', default='CHF_data.pickle', help='Please state desired storage file for this session.')
-   # (cli, args) = opt.parse_args()
-   # opt.print_help()
-
-    print ("+++++++++++")
-
-        
-    main()  
+'''
