@@ -28,6 +28,7 @@ import cython
 import math
 import random
 import datetime
+import time
 #import matplotlib.pyplot as plt
 import logging
 import threading
@@ -87,7 +88,7 @@ patients_doc = '/mnt/research/data/MIMIC3/physionet.org/works/MIMICIIIClinicalDa
 def main():
 
     np.random.seed(7)
-    options = ['lr', 'svm', 'rf', 'cnn', 'lstm']
+    options = ['d_cnn', 'cnn', 'lstm', 'd_lstm']
     
     try:
         with open ('/home/andy/Desktop/MIMIC/temp/pretrain/x_train.pkl', 'rb') as f:
@@ -140,21 +141,35 @@ def main():
     
     #opt = input("(1) Random or (2) Grid:    ")
     optimizer = ['SGD', 'RMSprop', 'Adam']
-    learn_rate = (10.0**np.arange(-4,-1)).tolist()
-    momentum = np.arange(.5, .9, .1).tolist()
+    learn_rate = [.0001, .0005, .001, .005, .01]
+    #momentum = np.arange(.5, .9, .1).tolist()
     #neurons = [100]
-    dropout_W = np.arange(.1, .5, .1).tolist()
-    dropout_U = np.arange(.1, .5, .1).tolist()
-    W_regularizer = [l1(.0001), l1(.001), l1(.01), l2(.0001), l2(.001), l2(.01), None]
-    U_regularizer = [l1(.0001), l1(.001), l1(.01), l2(.0001), l2(.001), l2(.01), None]
+    dropout_W = [0.001, .01, .1, .2, .4]
+    dropout_U = [0.001, .01, .1, .2, .4]
+    #W_regularizer = [l1(.0001), l1(.001), l1(.01), l2(.0001), l2(.001), l2(.01), None]
+    #U_regularizer = [l1(.0001), l1(.001), l1(.01), l2(.0001), l2(.001), l2(.01), None]
     init_mode = ['uniform', 'lecun_uniform', 'normal', 'zero', 'glorot_normal', 'glorot_uniform', 'he_normal', 'he_uniform']
-   
-    for o in options:        
-        model = RandomSearch(X=X_train, Y=Y_train, V= V_train, t = t_train, SG = SG, option = o, nb_epoch = 16, cv = 3, n_iter_search = 32, jobs = 3)
-        with open ("/home/andy/Desktop/MIMIC/results/randgrid_"+ str(o)+".pkl", 'wb') as f:
-            pickle.dump(model.grid_scores_, f)
-        with open("/home/andy/Desktop/MIMIC/results/best_params_" + str(o)+".pkl", 'wb') as f:
-            pickle.dump(model.best_params_, f)
+ 
+    #randomsearchcv  
+    #for o in options:        
+     #   model = RandomSearch(X=X_train, Y=Y_train, V= V_train, t = t_train, SG = SG, option = o, nb_epoch = 16, cv = 3, n_iter_search = 32, jobs = 3)
+     #   with open ("/home/andy/Desktop/MIMIC/results/randgrid_"+ str(o)+".pkl", 'wb') as f:
+     #       pickle.dump(model.grid_scores_, f)
+     #   with open("/home/andy/Desktop/MIMIC/results/best_params_" + str(o)+".pkl", 'wb') as f:
+     #       pickle.dump(model.best_params_, f)
+     #gridsearch
+
+    preset = {'optimizer':'Adam'}
+    for o in options:
+        t1 = time.time()
+        param_grid = dict(learn_rate=learn_rate)
+        data = grid_search(x = X_train, y = Y_train, v = V_train, t= t_train, SG = SG, option = o, nb_epoch = 16, cv = 3, n_jobs = 1, param_grid = param_grid, preset = preset)
+        with open ("/home/andy/Desktop/MIMIC/results/learnrategrid_"+ str(o)+".pkl", 'wb') as f:
+            pickle.dump(data, f)
+        print ("Pickle successful!")
+        t2 = time.time()
+        print ("Training completed in "+str((t2-t1)/3600) + " hours")
+         
     
 
 ##### Models #####  
@@ -175,7 +190,7 @@ def d_cnn_train(input_shape, dropout_W = 0.2, dropout_U = 0.2, optimizer = 'Adam
 
 def d_lstm_train(input_shape, dropout_W = 0.2, dropout_U = 0.2, optimizer = 'adam', neurons = 100, learn_rate = .01, momentum= 0.0, W_regularizer = None, U_regularizer = None, init_mode = 'zero'):
     model = Sequential()
-    model.add(LSTM(output_dim=neurons, dropout_W = dropout_W, dropout_U = dropout_U, W_regularizer = W_regularizer, U_regularizer = U_regularizer))
+    model.add(LSTM(output_dim = neurons, input_shape = input_shape, dropout_W = dropout_W, dropout_U = dropout_U, W_regularizer = W_regularizer, U_regularizer = U_regularizer))
     model.add(Dense(1, activation = 'sigmoid'))
     if optimizer == 'SGD':
         optimizer = SGD(lr = learn_rate, momentum = momentum, nesterov = True)
@@ -428,47 +443,53 @@ def RandomSearch(X=[], Y = [], V = [], t = [], SG = 0, top_words = 9444, max_rev
 #    report(classics_result.cv_results_)
 #    return (classics_result)
 
-def grid_search (x, y, v, t, SG, top_words = 9444, max_review_length=1000, embedding_length =300, batch_size = 128, nb_epoch=16, n_jobs = 1, option = 'd_cnn', param_grid = {}, preset = {}):       
+def grid_search (x, y, v, t, SG, top_words = 9444, max_review_length=1000, embedding_length =300, batch_size = 128, nb_epoch=16, cv=3, n_jobs = 1, option = 'd_cnn', param_grid = {}, preset = {}):       
     x = sequence.pad_sequences (x, maxlen=max_review_length)
-    if option == 'cnn':
-        preset.update({'build_fn':cnn_train, 'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length, 'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
-        model = KerasClassifier(**preset)
-        grid = GridSearchCV(estimator=model, param_grid=param_grid, cv = 3, n_jobs=n_jobs, verbose = 1)
-        grid_result = grid.fit(x, y)
-        report(grid_result.cv_results_)
-        return (grid_result)
-
-    elif option == 'lstm':
-        preset.update({'build_fn':lstm_train, 'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length, 'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
-        model = KerasClassifier(**preset)
-        grid = GridSearchCV(estimator=model, param_grid=param_grid, cv = 3, n_jobs=n_jobs, verbose = 1)
-        grid_result = grid.fit(x, y)
-        report(grid_result.cv_results_)
-        return (grid_result)
-
     data = []
     x = np.array(x)     #convert to numpy form before splitting
+    v = np.array(v)
     y = np.array(y)
     t = np.array(t)
     #for key, value in param_grid.iteritems():
     for key, value in param_grid.items():
         for kk in value:
-            print (key, kk)
-            preset.update({'input_shape': (max_review_length, embedding_length), key:kk})
+            print (option, key, kk)
             if option == 'd_cnn':
+                preset.update({'input_shape': (max_review_length, embedding_length), key:kk})
                 model = d_cnn_train(**preset)
+                batching = True
             elif option == 'd_lstm':
+                preset.update({'input_shape': (max_review_length, embedding_length), key:kk})
                 model = d_lstm_train(**preset)
-            skf = StratifiedKFold (n_splits = 3, shuffle = True, random_state = 8)
+                batching = True
+            elif option == 'lstm':
+                preset.update({'build_fn':cnn_train, 'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length, 'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
+                model = lstm_train(**preset)
+                batching = False
+            elif option == 'cnn':
+                preset.update({'build_fn':cnn_train, 'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length, 'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
+                model = cnn_train(**preset)
+                batching = False
+            
+            skf = StratifiedKFold (n_splits = cv, shuffle = True, random_state = 8)
             cvscore = []
             for train, test in skf.split(x, y):
                 x_train, x_test = x[train], x[test]
                 y_train, y_test = y[train], y[test]
                 t_train, t_test = t[train], t[test]
-                model.fit_generator(decay_generator(x = x_train, y = y_train, t_stamps = t_train, SG = SG), samples_per_epoch = len(x_train), nb_epoch = nb_epoch, nb_worker=n_jobs)
-                score = model.evaluate_generator(decay_generator(x = x_test, y = y_test, t_stamps = t_test, SG = SG), val_samples = len(x_test), nb_worker = n_jobs)
-                print("%s: %.2f%%" % (model.metrics_names[1], score[1]*100))
-                cvscore.append(score[1]*100)
+                v_train, v_test = v[train], v[test]
+                
+                if batching == True:
+                    model.fit_generator(decay_generator(x = v_train, y = y_train, t_stamps = t_train, SG = SG), samples_per_epoch = len(x_train), nb_epoch = nb_epoch, nb_worker=n_jobs)
+                    score = model.evaluate_generator(decay_generator(x = v_test, y = y_test, t_stamps = t_test, SG = SG), val_samples = len(x_test), nb_worker = n_jobs)
+                    print("%s: %.2f%%" % (model.metrics_names[1], score[1]*100))
+                    cvscore.append(score[1]*100)
+                else:
+                    model.fit(x_train, y_train, n_jobs = n_jobs)
+                    score = model.evaluate(x_test, y_test, n_jobs = n_jobs)
+                    print("%s: %.2f%%" % (model.metrics_names[1], score[1]*100))
+                    cvscore.append(score[1]*100)                  
+                    
             temp = {'model':option, key:kk, 'mean_score': np.mean(cvscore), 'std': np.std(cvscore)}
             data.append(temp)   
     return (data)
