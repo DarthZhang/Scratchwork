@@ -28,7 +28,7 @@ import cython
 import math
 import random
 import datetime
-import time
+import time as TIME
 #import matplotlib.pyplot as plt
 import logging
 import threading
@@ -88,42 +88,42 @@ patients_doc = '/mnt/research/data/MIMIC3/physionet.org/works/MIMICIIIClinicalDa
 def main():
 
     np.random.seed(7)
-    options = ['d_cnn', 'cnn', 'lstm', 'd_lstm']
-    
+    options = ['cnn', 'lstm']
+    #'/home/andy/Desktop/MIMIC/temp/pretrain/...'
     try:
-        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/x_train.pkl', 'rb') as f:
+        with open ('/home/tangfeng/MIMIC/temp/pretrain/x_train.pkl', 'rb') as f:
             X_train = pickle.load(f)
-        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/x_test.pkl', 'rb') as f:
+        with open ('/home/tangfeng/MIMIC/temp/pretrain/x_test.pkl', 'rb') as f:
             X_test = pickle.load(f)
-        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/y_train.pkl', 'rb') as f:
+        with open ('/home/tangfeng/MIMIC/temp/pretrain/y_train.pkl', 'rb') as f:
             Y_train = pickle.load(f)
-        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/y_test.pkl', 'rb') as f:
+        with open ('/home/tangfeng/MIMIC/temp/pretrain/y_test.pkl', 'rb') as f:
             Y_test = pickle.load(f)
-        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/v_train.pkl', 'rb') as f:
+        with open ('/home/tangfeng/MIMIC/temp/pretrain/v_train.pkl', 'rb') as f:
             V_train = pickle.load(f)
-        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/v_test.pkl', 'rb') as f:
+        with open ('/home/tangfeng/MIMIC/temp/pretrain/v_test.pkl', 'rb') as f:
             V_test = pickle.load(f)
-        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/t_train.pkl', 'rb') as f:
+        with open ('/home/tangfeng/MIMIC/temp/pretrain/t_train.pkl', 'rb') as f:
             t_train = pickle.load(f)   
-        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/t_test.pkl', 'rb') as f:
+        with open ('/home/tangfeng/MIMIC/temp/pretrain/t_test.pkl', 'rb') as f:
             t_test = pickle.load(f)
     except:
-        with open ('/home/andy/Desktop/MIMIC/temp/admits.pkl', 'rb') as f:
+        with open ('/home/tangfeng/MIMIC/temp/admits.pkl', 'rb') as f:
             admits = pickle.load(f)
     
-        with open ('/home/andy/Desktop/MIMIC/temp/d.pkl', 'rb') as f:
+        with open ('/home/tangfeng/MIMIC/temp/d.pkl', 'rb') as f:
             d = pickle.load(f)
         
-        with open ('/home/andy/Desktop/MIMIC/temp/lib.pkl', 'rb') as f:
+        with open ('/home/tangfeng/MIMIC/temp/lib.pkl', 'rb') as f:
             lib = pickle.load(f)
         
-        with open ('/home/andy/Desktop/MIMIC/temp/sentences.pkl', 'rb') as f:
+        with open ('/home/tangfeng/MIMIC/temp/sentences.pkl', 'rb') as f:
             sentences = pickle.load(f)
         print ("Splitting dataset...")
         X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test = get_split(admits = admits, sentences = sentences, lib = lib, dz = d)
         del sentences
     try:
-        SG = gensim.models.Word2Vec.load('/home/andy/Desktop/MIMIC/temp/pretrain/SG')
+        SG = gensim.models.Word2Vec.load('/home/tangfeng/MIMIC/temp/pretrain/SG')
         print ("Dictionary loaded.")
     except:
         print ("Making Dictionary...")
@@ -131,7 +131,7 @@ def main():
         #Do NOT forget the previous step; it is very important to convert sentence to regular python list... otherwise it'll take forever.
         SG = gensim.models.Word2Vec(sentences = V_train, sg = 1, size = 300, window = 10, min_count = int(len(V_train)*.01), hs = 1, negative = 0)
         print("...saving dictionary...")
-        SG.save("/home/af1tang/Desktop/MIMIC/temp/pretrain/SG")
+        SG.save("/home/tangfeng/MIMIC/temp/pretrain/SG")
     
       
     #print ("Making word vectors...")
@@ -160,15 +160,23 @@ def main():
      #gridsearch
 
     preset = {'optimizer':'Adam'}
+    Data = []
     for o in options:
-        t1 = time.time()
+        t1 = TIME.time()
         param_grid = dict(learn_rate=learn_rate)
         data = grid_search(x = X_train, y = Y_train, v = V_train, t= t_train, SG = SG, option = o, nb_epoch = 16, cv = 3, n_jobs = 1, param_grid = param_grid, preset = preset)
-        with open ("/home/andy/Desktop/MIMIC/results/learnrategrid_"+ str(o)+".pkl", 'wb') as f:
+        with open ("/home/tangfeng/MIMIC/results/learnrategrid_"+ str(o)+".pkl", 'wb') as f:
             pickle.dump(data, f)
         print ("Pickle successful!")
-        t2 = time.time()
+        t2 = TIME.time()
         print ("Training completed in "+str((t2-t1)/3600) + " hours")
+        
+        Data += data
+    
+    Data = pd.DataFrame([pd.Series(dd) for dd in Data])
+    with open ("/home/tangfeng/MIMIC/results/gridsearch.pkl", 'wb') as f:
+        pickle.dump(Data, f)
+    print ("Done.")
          
     
 
@@ -259,10 +267,9 @@ def decay_generator(x, y, t_stamps, embedding_length=300, max_review_length=1000
         lst.append(i)
     lst.append(len(x))
     
-    decay = .0002
+    decay = .00005
     if SG ==0:
         print ("dictionary not defined")
-        return ([])
         
     while True:
         W = []
@@ -282,7 +289,7 @@ def decay_generator(x, y, t_stamps, embedding_length=300, max_review_length=1000
 
         
 def decay_norm (x, t_stamps, embedding_length=300, max_review_length=1000, SG=0):
-    decay = .0002
+    decay = .00005
     if SG ==0:
         print ("dictionary not defined")
         return ([])
@@ -463,11 +470,11 @@ def grid_search (x, y, v, t, SG, top_words = 9444, max_review_length=1000, embed
                 model = d_lstm_train(**preset)
                 batching = True
             elif option == 'lstm':
-                preset.update({'build_fn':cnn_train, 'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length, 'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
+                preset.update({'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length})
                 model = lstm_train(**preset)
                 batching = False
             elif option == 'cnn':
-                preset.update({'build_fn':cnn_train, 'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length, 'batch_size': batch_size, 'nb_epoch':nb_epoch, 'verbose':1})
+                preset.update({'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length})
                 model = cnn_train(**preset)
                 batching = False
             
@@ -485,8 +492,8 @@ def grid_search (x, y, v, t, SG, top_words = 9444, max_review_length=1000, embed
                     print("%s: %.2f%%" % (model.metrics_names[1], score[1]*100))
                     cvscore.append(score[1]*100)
                 else:
-                    model.fit(x_train, y_train, n_jobs = n_jobs)
-                    score = model.evaluate(x_test, y_test, n_jobs = n_jobs)
+                    model.fit(x_train, y_train, batch_size = batch_size, nb_epoch = nb_epoch, verbose = 1)
+                    score = model.evaluate(x_test, y_test, batch_size = batch_size, verbose = 1)
                     print("%s: %.2f%%" % (model.metrics_names[1], score[1]*100))
                     cvscore.append(score[1]*100)                  
                     
