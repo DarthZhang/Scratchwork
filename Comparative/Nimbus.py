@@ -23,7 +23,7 @@ from pandas.io import sql as transfer
 
 import numpy as np
 import gensim
-import cython
+#import cython
 #import glove
 import math
 import random
@@ -91,55 +91,55 @@ def main():
     options = ['cnn', 'lstm']
     #'/home/andy/Desktop/MIMIC/temp/pretrain/...'
     try:
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/x_train.pkl', 'rb') as f:
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/x_train.pkl', 'rb') as f:
             X_train = pickle.load(f)
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/x_test.pkl', 'rb') as f:
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/x_test.pkl', 'rb') as f:
             X_test = pickle.load(f)
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/y_train.pkl', 'rb') as f:
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/y_train.pkl', 'rb') as f:
             Y_train = pickle.load(f)
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/y_test.pkl', 'rb') as f:
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/y_test.pkl', 'rb') as f:
             Y_test = pickle.load(f)
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/v_train.pkl', 'rb') as f:
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/v_train.pkl', 'rb') as f:
             V_train = pickle.load(f)
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/v_test.pkl', 'rb') as f:
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/v_test.pkl', 'rb') as f:
             V_test = pickle.load(f)
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/t_train.pkl', 'rb') as f:
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/t_train.pkl', 'rb') as f:
             t_train = pickle.load(f)   
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/t_test.pkl', 'rb') as f:
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/t_test.pkl', 'rb') as f:
             t_test = pickle.load(f)        
-        SG = gensim.models.Word2Vec.load('/home/tangfeng/MIMIC/temp/pretrain/SG')
+        SG = gensim.models.Word2Vec.load('/home/andy/Desktop/MIMIC/temp/pretrain/SG')
         print ("Training sets loaded.")
     except:
-        with open ('/home/tangfeng/MIMIC/temp/admits.pkl', 'rb') as f:
+        with open ('/home/andy/Desktop/MIMIC/temp/admits.pkl', 'rb') as f:
             admits = pickle.load(f)
     
-        with open ('/home/tangfeng/MIMIC/temp/d.pkl', 'rb') as f:
+        with open ('/home/andy/Desktop/MIMIC/temp/d.pkl', 'rb') as f:
             d = pickle.load(f)
         
-        with open ('/home/tangfeng/MIMIC/temp/lib.pkl', 'rb') as f:
+        with open ('/home/andy/Desktop/MIMIC/temp/lib.pkl', 'rb') as f:
             lib = pickle.load(f)
         
-        with open ('/home/tangfeng/MIMIC/temp/sentences.pkl', 'rb') as f:
+        with open ('/home/andy/Desktop/MIMIC/temp/sentences.pkl', 'rb') as f:
             sentences = pickle.load(f)
         print ("Splitting dataset...")
         X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test = get_split(admits = admits, sentences = sentences, lib = lib, dz = d)
         del sentences
         
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/x_train.pkl', 'wb') as f:
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/x_train.pkl', 'wb') as f:
             pickle.dump(X_train, f)
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/x_test.pkl', 'wb') as f:
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/x_test.pkl', 'wb') as f:
             pickle.dump(X_test, f)
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/v_train.pkl', 'wb') as f:
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/v_train.pkl', 'wb') as f:
             pickle.dump(V_train, f)
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/v_test.pkl', 'wb') as f:
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/v_test.pkl', 'wb') as f:
             pickle.dump(V_test, f)
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/y_train.pkl', 'wb') as f:
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/y_train.pkl', 'wb') as f:
             pickle.dump(Y_train, f)
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/y_test.pkl', 'wb') as f:
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/y_test.pkl', 'wb') as f:
             pickle.dump(Y_test, f)
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/t_train.pkl', 'wb') as f:
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/t_train.pkl', 'wb') as f:
             pickle.dump(t_train, f)
-        with open ('/home/tangfeng/MIMIC/temp/pretrain/t_test.pkl', 'wb') as f:
+        with open ('/home/andy/Desktop/MIMIC/temp/pretrain/t_test.pkl', 'wb') as f:
             pickle.dump(t_test, f)
 
 
@@ -148,7 +148,7 @@ def main():
         #Do NOT forget the previous step; it is very important to convert sentence to regular python list... otherwise it'll take forever.
         SG = gensim.models.Word2Vec(sentences = V_train, sg = 1, size = 300, window = 10, min_count = int(len(V_train)*.01), hs = 1, negative = 0)
         print("...saving dictionary...")
-        SG.save("/home/tangfeng/MIMIC/temp/pretrain/SG")
+        SG.save("/home/andy/Desktop/MIMIC/temp/pretrain/SG")
     
       
     #print ("Making word vectors...")
@@ -216,17 +216,17 @@ def main():
         init_mode = ['uniform', 'lecun_uniform', 'normal', 'zero', 'glorot_normal', 'glorot_uniform', 'he_normal', 'he_uniform']
         param_grid= dict(optimizer = optimizer, learn_rate = learn_rate, momentum = momentum,  dropout_W = dropout_W, dropout_U = dropout_U, init_mode = init_mode)
     
-        for o in ['d_lstm', 'd_cnn', 'cnn', 'lstm']:
+        for o in ['cnn', 'lstm']:
             t1 = TIME.time()
             data = random_search(x=X_train, y=Y_train, v=V_train, t=t_train, SG=SG, option = o, nb_epoch = 16, cv = 3, n_jobs = 1, param_grid = param_grid, preset = preset, n_iter=40)    
             t2 = TIME.time()
-            with open ("/home/tangfeng/MIMIC/results/random_"+ str(o)+".pkl", 'wb') as f:
+            with open ("/home/andy/Desktop/MIMIC/results/random_"+ str(o)+".pkl", 'wb') as f:
                 pickle.dump(data, f)
             print ("Pickle successful!")
             print ("Training completed in "+str((t2-t1)/3600) + " hours")
             
             Data += data
-        with open ("/home/tangfeng/MIMIC/results/randomsearch.pkl", 'wb') as f:
+        with open ("/home/andy/Desktop/MIMIC/results/randomsearch.pkl", 'wb') as f:
             pickle.dump(Data, f)
         print ("Done.")
          
