@@ -123,7 +123,6 @@ def main():
             sentences = pickle.load(f)
         print ("Splitting dataset...")
         X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test = get_split(admits = admits, sentences = sentences, lib = lib, dz = d)
-        del sentences
         
         with open ('/home/andy/Desktop/MIMIC/temp/pretrain/x_train.pkl', 'wb') as f:
             pickle.dump(X_train, f)
@@ -144,9 +143,13 @@ def main():
 
 
         print ("Making Dictionary...")
-        V_train = [np.ndarray.tolist(i) for i in V_train]
+        V_test = [np.ndarray.tolist(i) for i in V_test]
+        exons = [i[1] for i in sentences if i[1] not in V_test]
+        del sentences
+        
+        #V_train = [np.ndarray.tolist(i) for i in V_train]
         #Do NOT forget the previous step; it is very important to convert sentence to regular python list... otherwise it'll take forever.
-        SG = gensim.models.Word2Vec(sentences = V_train, sg = 1, size = 300, window = 10, min_count = int(len(V_train)*.01), hs = 1, negative = 0)
+        SG = gensim.models.Word2Vec(sentences = exons, sg = 1, size = 300, window = 10, min_count = int(len(V_train)*.01), hs = 1, negative = 0)
         print("...saving dictionary...")
         SG.save("/home/andy/Desktop/MIMIC/temp/pretrain/SG")
     
