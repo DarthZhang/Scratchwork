@@ -87,8 +87,8 @@ patients_doc = '/mnt/research/data/MIMIC3/physionet.org/works/MIMICIIIClinicalDa
 
 def main():
 
-    np.random.seed(7)
-    options = ['cnn', 'lstm']
+    np.random.seed(8)
+    options = ['svm', 'rf', 'lr']
     #'/home/andy/Desktop/MIMIC/temp/pretrain/...'
     try:
         with open ('/home/andy/Desktop/MIMIC/temp/pretrain/x_train.pkl', 'rb') as f:
@@ -168,9 +168,10 @@ def main():
      #gridsearch
 
     random = True
-    preset = {'optimizer':'Adam', 'learn_rate': .005}
-    Data = []
+    
     if random == False:
+        Data = []
+        preset = {'optimizer':'Adam', 'learn_rate': .005}
         optimizer = ['SGD', 'RMSprop', 'Adam']
         learn_rate = [.0001, .0005, .001, .005, .01]
         #momentum = np.arange(.5, .9, .1).tolist()
@@ -201,11 +202,7 @@ def main():
     else:
         preset = {}
         Data = []
-        
-        #lr_params = {'C':sp_rand(.0001, 1000), 'penalty':('l1','l2')}
-        #sv_params = {'C':sp_rand(.0001,1000), 'kernel':('linear', 'poly', 'rbf', 'sigmoid')}
-        #rf_params = {'criterion': ['gini', 'entropy'], 'n_estimators': sp_randint(10, 50), 'bootstrap': [True, False]}
-        
+
         optimizer = ['SGD', 'RMSprop', 'Adam']
         learn_rate = sp_rand(.0001, .01)
         momentum = sp_rand(.5, .9)
@@ -214,9 +211,17 @@ def main():
         #W_regularizer = [l1(.0001), l1(.001), l1(.01), l2(.0001), l2(.001), l2(.01), None]
         #U_regularizer = [l1(.0001), l1(.001), l1(.01), l2(.0001), l2(.001), l2(.01), None]
         init_mode = ['uniform', 'lecun_uniform', 'normal', 'zero', 'glorot_normal', 'glorot_uniform', 'he_normal', 'he_uniform']
-        param_grid= dict(optimizer = optimizer, learn_rate = learn_rate, momentum = momentum,  dropout_W = dropout_W, dropout_U = dropout_U, init_mode = init_mode)
-    
-        for o in ['cnn', 'lstm']:
+        
+        for o in options:
+            if o == 'lr':
+                param_grid = {'C':sp_rand(.00001, 1000), 'penalty':('l1','l2')}
+            elif o == 'sv':
+                param_grid = {'C':sp_rand(.00001,1000), 'kernel':('linear', 'poly', 'rbf', 'sigmoid')}
+            elif o == 'rf':
+                param_grid = {'criterion': ['gini', 'entropy'], 'n_estimators': sp_randint(10, 50), 'bootstrap': [True, False]}
+            else:
+                param_grid= dict(optimizer = optimizer, learn_rate = learn_rate, momentum = momentum,  dropout_W = dropout_W, dropout_U = dropout_U, init_mode = init_mode)
+
             t1 = TIME.time()
             data = random_search(x=X_train, y=Y_train, v=V_train, t=t_train, SG=SG, option = o, nb_epoch = 16, cv = 3, n_jobs = 1, param_grid = param_grid, preset = preset, n_iter=40)    
             t2 = TIME.time()
@@ -229,8 +234,7 @@ def main():
         with open ("/home/andy/Desktop/MIMIC/results/randomsearch.pkl", 'wb') as f:
             pickle.dump(Data, f)
         print ("Done.")
-         
-    
+
 
 ##### Models #####  
 def d_cnn_train(input_shape, dropout_W = 0.2, dropout_U = 0.2, optimizer = 'Adam', neurons = 100, learn_rate = .01, momentum= 0.0, W_regularizer = None, U_regularizer = None, init_mode = 'zero'):
@@ -312,14 +316,13 @@ def threadsafe_generator(f):
         return (threadsafe_iter(f(*a, **kw)))
     return (g)
 
-def decay_generator(x, y, t_stamps, embedding_length=300, max_review_length=1000, SG=0):
+def decay_generator(x, y, t_stamps, embedding_length=300, max_review_length=1000, decay = .00001, SG=0):
     lst = []
     #for i in xrange(0,len(x), 128):
     for i in range(0, len(x), 128):
         lst.append(i)
     lst.append(len(x))
-    
-    decay = .00001                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
     if SG ==0:
         print ("dictionary not defined")
         
@@ -340,8 +343,8 @@ def decay_generator(x, y, t_stamps, embedding_length=300, max_review_length=1000
                 W= []
 
         
-def decay_norm (x, t_stamps, embedding_length=300, max_review_length=1000, SG=0):
-    decay = .00005
+def decay_norm (x, t_stamps, embedding_length=300, max_review_length=1000, decay = 0.00001, SG=0):
+
     if SG ==0:
         print ("dictionary not defined")
         return ([])
@@ -448,22 +451,41 @@ def random_search (x, y, v, t, SG, top_words = 9444, max_review_length=1000, emb
             except:
                 preset.update({key:value.rvs(1)[0]})
                 
+        decay = sp_rand(0, 0.00001).rvs(1)[0]
+                
         if option == 'd_cnn':
             preset.update({'input_shape': (max_review_length, embedding_length)})
             model = d_cnn_train(**preset)
             batching = True
+            classic = False
         elif option == 'd_lstm':
             preset.update({'input_shape': (max_review_length, embedding_length)})
             model = d_lstm_train(**preset)
             batching = True
+            classic = False
         elif option == 'lstm':
             preset.update({'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length})
             model = lstm_train(**preset)
             batching = False
+            classic = False
         elif option == 'cnn':
             preset.update({'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length})
             model = cnn_train(**preset)
             batching = False
+            classic = False
+        elif option == 'lr':
+            model = LogisticRegression(**preset)
+            batching = False
+            classic = True
+        elif option == 'sv':
+            model = SVC(**preset)
+            batching = False
+            classic = True
+        elif option == 'rf':
+            model = RandomForestClassifier(**preset)
+            batching = False
+            classic = True
+            
         print (preset)
         
         skf = StratifiedKFold (n_splits = cv, shuffle = True, random_state = 8)
@@ -475,21 +497,25 @@ def random_search (x, y, v, t, SG, top_words = 9444, max_review_length=1000, emb
             v_train, v_test = v[train], v[test]
             
             if batching == True:
-                model.fit_generator(decay_generator(x = v_train, y = y_train, t_stamps = t_train, SG = SG), samples_per_epoch = len(x_train), nb_epoch = nb_epoch, nb_worker=n_jobs)
-                score = model.evaluate_generator(decay_generator(x = v_test, y = y_test, t_stamps = t_test, SG = SG), val_samples = len(x_test), nb_worker = n_jobs)
+                model.fit_generator(decay_generator(x = v_train, y = y_train, t_stamps = t_train, decay = decay, SG = SG), samples_per_epoch = len(x_train), nb_epoch = nb_epoch, nb_worker=n_jobs)
+                score = model.evaluate_generator(decay_generator(x = v_test, y = y_test, t_stamps = t_test, decay = decay, SG = SG), val_samples = len(x_test), nb_worker = n_jobs)
                 print("%s: %.2f%%" % (model.metrics_names[1], score[1]*100))
                 cvscore.append(score[1]*100)
+            elif classic == True:
+                model.fit(decay_norm(x=v_train, t_stamps = t_train, decay = decay, SG=SG), y_train)
+                score = model.evaluate(decay_norm(x=v_test, t_stamps = t_test, decay = decay, SG=SG), y_test)
+                print("%s: %.2f%%" % (model.metrics_names[1], score[1]*100))
             else:
                 model.fit(x_train, y_train, batch_size = batch_size, nb_epoch = nb_epoch, verbose = 1)
-                score = model.evaluate(x_test, y_test, batch_size = batch_size, verbose = 1)
-                print("%s: %.2f%%" % (model.metrics_names[1], score[1]*100))
-                cvscore.append(score[1]*100)                  
+                score = model.score(x_test, y_test, batch_size = batch_size, verbose = 1)
+                print("%s: %.2f%%" % ("accuracy", score*100))
+                cvscore.append(score*100)                  
                 
         temp = {'model':option}
         temp.update(preset)
         temp.update({'mean_score': np.mean(cvscore), 'std': np.std(cvscore)})
         data.append(temp)   
-    return (data)        
+    return (data)      
         
 
 def grid_search (x, y, v, t, SG, top_words = 9444, max_review_length=1000, embedding_length =300, batch_size = 128, nb_epoch=16, cv=3, n_jobs = 1, option = 'd_cnn', param_grid = {}, preset = {}):       
