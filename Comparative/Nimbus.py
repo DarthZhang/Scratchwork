@@ -149,7 +149,9 @@ def main():
         
         #V_train = [np.ndarray.tolist(i) for i in V_train]
         #Do NOT forget the previous step; it is very important to convert sentence to regular python list... otherwise it'll take forever.
-        SG = gensim.models.Word2Vec(sentences = exons, sg = 1, size = 300, window = 10, min_count = int(len(V_train)*.01), hs = 1, negative = 0)
+        SG = gensim.models.Word2Vec(sentences = exons, sg = 1, size = 300, window = 10, min_count = int(len(exons)*.001), hs = 1, negative = 0)
+        #SG = gensim.models.Word2Vec(sentences = V_train, sg = 1, size = 300, window = 10, min_count = int(len(V_train)*.01), hs = 1, negative = 0)
+       
         print("...saving dictionary...")
         SG.save("/home/andy/Desktop/MIMIC/temp/pretrain/SG")
     
