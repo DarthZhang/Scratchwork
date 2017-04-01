@@ -508,13 +508,14 @@ def random_search (x, y, v, t, SG, top_words = 9444, max_review_length=1000, emb
                 cvscore.append(score[1]*100)
             elif classic == True:
                 model.fit(decay_norm(x=v_train, t_stamps = t_train, decay = decay, SG=SG), y_train)
-                score = model.evaluate(decay_norm(x=v_test, t_stamps = t_test, decay = decay, SG=SG), y_test)
-                print("%s: %.2f%%" % (model.metrics_names[1], score[1]*100))
+                score = model.score(decay_norm(x=v_test, t_stamps = t_test, decay = decay, SG=SG), y_test)
+                print("%s: %.2f%%" % ("accuracy", score*100))
+                cvscore.append(score*100) 
             else:
                 model.fit(x_train, y_train, batch_size = batch_size, nb_epoch = nb_epoch, verbose = 1)
-                score = model.score(x_test, y_test, batch_size = batch_size, verbose = 1)
-                print("%s: %.2f%%" % ("accuracy", score*100))
-                cvscore.append(score*100)                  
+                score = model.evaluate(x_test, y_test, batch_size = batch_size, verbose = 1)
+                print("%s: %.2f%%" % (model.metrics_names[1], score[1]*100))
+                cvscore.append(score[1]*100)                  
                 
         temp = {'model':option}
         temp.update(preset)
