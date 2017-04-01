@@ -144,7 +144,7 @@ def main():
 
         print ("Making Dictionary...")
         V_test = [np.ndarray.tolist(i) for i in V_test]
-        exons = [i[1] for i in sentences if i[1] not in V_test]
+        exons = [i[2] for i in sentences if i[2] not in V_test]
         del sentences
         
         #V_train = [np.ndarray.tolist(i) for i in V_train]
@@ -205,7 +205,6 @@ def main():
         print ("Done.")
     
     else:
-        preset = {}
         Data = []
 
         optimizer = ['SGD', 'RMSprop', 'Adam']
@@ -218,9 +217,10 @@ def main():
         init_mode = ['uniform', 'lecun_uniform', 'normal', 'zero', 'glorot_normal', 'glorot_uniform', 'he_normal', 'he_uniform']
         
         for o in options:
+            preset = {}
             if o == 'lr':
                 param_grid = {'C':sp_rand(.00001, 1000), 'penalty':('l1','l2')}
-            elif o == 'sv':
+            elif o == 'svm':
                 param_grid = {'C':sp_rand(.00001,1000), 'kernel':('linear', 'poly', 'rbf', 'sigmoid')}
             elif o == 'rf':
                 param_grid = {'criterion': ['gini', 'entropy'], 'n_estimators': sp_randint(10, 50), 'bootstrap': [True, False]}
@@ -482,7 +482,7 @@ def random_search (x, y, v, t, SG, top_words = 9444, max_review_length=1000, emb
             model = LogisticRegression(**preset)
             batching = False
             classic = True
-        elif option == 'sv':
+        elif option == 'svm':
             model = SVC(**preset)
             batching = False
             classic = True
