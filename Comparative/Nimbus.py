@@ -423,7 +423,7 @@ def get_split(admits, sentences, lib, dz):
         x = np.array(list(map(lambda x: keys.index(x), x_test)))
                     
         X_test.append(x)
-        V_test.append(np.array(x_train))
+        V_test.append(np.array(x_test))
         t_test.append(np.array(t_stamps))
         Y_test.append(t[3])           
     return (X_train, X_test, V_train, V_test, t_train, t_test, Y_train, Y_test)
