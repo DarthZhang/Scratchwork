@@ -88,7 +88,7 @@ patients_doc = '/mnt/research/data/MIMIC3/physionet.org/works/MIMICIIIClinicalDa
 def main():
 
     np.random.seed(8)
-    options = ['svm', 'rf', 'lr']
+    options = ['lr']
     #'/home/andy/Desktop/MIMIC/temp/pretrain/...'
     try:
         with open ('/home/andy/Desktop/MIMIC/temp/pretrain/x_train.pkl', 'rb') as f:
@@ -143,34 +143,21 @@ def main():
 
 
         print ("Making Dictionary...")
-        V_test = [np.ndarray.tolist(i) for i in V_test]
-        exons = [i[2] for i in sentences if i[2] not in V_test]
+        #V_test = [np.ndarray.tolist(i) for i in V_test]
+        #exons = [i[2] for i in sentences if i[2] not in V_test]
         del sentences
         
-        #V_train = [np.ndarray.tolist(i) for i in V_train]
+        V_train = [np.ndarray.tolist(i) for i in V_train]
         #Do NOT forget the previous step; it is very important to convert sentence to regular python list... otherwise it'll take forever.
-        SG = gensim.models.Word2Vec(sentences = exons, sg = 1, size = 300, window = 10, min_count = int(len(exons)*.001), hs = 1, negative = 0)
-        #SG = gensim.models.Word2Vec(sentences = V_train, sg = 1, size = 300, window = 10, min_count = int(len(V_train)*.01), hs = 1, negative = 0)
+        #SG = gensim.models.Word2Vec(sentences = exons, sg = 1, size = 300, window = 10, min_count = int(len(exons)*.001), hs = 1, negative = 0)
+        SG = gensim.models.Word2Vec(sentences = V_train, sg = 1, size = 300, window = 10, min_count = int(len(V_train)*.01), hs = 1, negative = 0)
        
         print("...saving dictionary...")
         SG.save("/home/andy/Desktop/MIMIC/temp/pretrain/SG")
     
-      
-    #print ("Making word vectors...")
-    #W_train, C_train = decay(x= V_train, t_stamps = t_train, SG = SG)     
-    #W_test, C_test = decay(x = V_test, t_stamps = t_test, SG = SG)
-    #print ("Done.")        
+    #fixed embedding layers  
+    #weights = SG.syn0
     
-    #opt = input("(1) Random or (2) Grid:    ")
-
-    #randomsearchcv  
-    #for o in options:        
-     #   model = RandomSearch(X=X_train, Y=Y_train, V= V_train, t = t_train, SG = SG, option = o, nb_epoch = 16, cv = 3, n_iter_search = 32, jobs = 3)
-     #   with open ("/home/andy/Desktop/MIMIC/results/randgrid_"+ str(o)+".pkl", 'wb') as f:
-     #       pickle.dump(model.grid_scores_, f)
-     #   with open("/home/andy/Desktop/MIMIC/results/best_params_" + str(o)+".pkl", 'wb') as f:
-     #       pickle.dump(model.best_params_, f)
-     #gridsearch
 
     random = True
     
@@ -219,9 +206,9 @@ def main():
         for o in options:
             preset = {}
             if o == 'lr':
-                param_grid = {'C':sp_rand(.00001, 1000), 'penalty':('l1','l2')}
+                param_grid = {'C':sp_rand(.0001, 100), 'penalty':('l1','l2')}
             elif o == 'svm':
-                param_grid = {'C':sp_rand(.00001,1000), 'kernel':('linear', 'poly', 'rbf', 'sigmoid')}
+                param_grid = {'C':sp_rand(.0001,100)}
             elif o == 'rf':
                 param_grid = {'criterion': ['gini', 'entropy'], 'n_estimators': sp_randint(10, 50), 'bootstrap': [True, False]}
             else:
@@ -479,14 +466,17 @@ def random_search (x, y, v, t, SG, top_words = 9444, max_review_length=1000, emb
             batching = False
             classic = False
         elif option == 'lr':
+            preset.update({'verbose':1})
             model = LogisticRegression(**preset)
             batching = False
             classic = True
         elif option == 'svm':
+            preset.update({'verbose':True})
             model = SVC(**preset)
             batching = False
             classic = True
         elif option == 'rf':
+            preset.update({'verbose':1})
             model = RandomForestClassifier(**preset)
             batching = False
             classic = True
