@@ -5,7 +5,6 @@ Created on Sat Feb 25 13:59:57 2017
 @author: andy
 """
 
-import tensorflow as tf
 import sys
 import pickle
 #import cPickle as pickle
@@ -16,6 +15,7 @@ import gzip
 #import MySQLdb as mysql
 #import pymysql as mysql
 import pandas as pd
+import tensorflow as tf
 #import sqlalchemy
 #from sqlalchemy import create_engine
 from pandas import DataFrame
@@ -56,7 +56,7 @@ from keras.wrappers.scikit_learn import KerasClassifier
 
 from keras.preprocessing import sequence
 #from keras.preprocessing.text import Tokenizer
-from keras.models import Sequential
+from keras.models import Sequential, Model
 from keras.layers import Dense, LSTM, Input, merge
 from keras.layers.convolutional import Convolution1D, MaxPooling1D
 from keras.layers.embeddings import Embedding
@@ -90,7 +90,7 @@ patients_doc = '/mnt/research/data/MIMIC3/physionet.org/works/MIMICIIIClinicalDa
 def main():
 
     np.random.seed(8)
-    options = ['svm', 'rf', 'lr']
+    options = ['d_lstm', 'd_cnn']
     #'/home/andy/Desktop/MIMIC/temp/pretrain/...'
     try:
         with open ('/home/andy/Desktop/MIMIC/temp/pretrain/x_train.pkl', 'rb') as f:
@@ -152,7 +152,7 @@ def main():
         V_train = [np.ndarray.tolist(i) for i in V_train]
         #Do NOT forget the previous step; it is very important to convert sentence to regular python list... otherwise it'll take forever.
         #SG = gensim.models.Word2Vec(sentences = exons, sg = 1, size = 300, window = 10, min_count = int(len(exons)*.001), hs = 1, negative = 0)
-        SG = gensim.models.Word2Vec(sentences = V_train, sg = 1, size = 300, window = 10, min_count = int(len(V_train)*.01), hs = 1, negative = 0)
+        SG = gensim.models.Word2Vec(sentences = V_train, sg = 1, size = 300, window = 10, hs = 1, negative = 0)
        
         print("...saving dictionary...")
         SG.save("/home/andy/Desktop/MIMIC/temp/pretrain/SG")
@@ -210,9 +210,9 @@ def main():
         for o in options:
             preset = {}
             if o == 'lr':
-                param_grid = {'C':sp_rand(.0001, 100), 'penalty':('l1','l2')}
+                param_grid = {'C':sp_rand(.0001, 1000), 'penalty':('l1','l2')}
             elif o == 'svm':
-                param_grid = {'C':sp_rand(.0001,100)}
+                param_grid = {'C':sp_rand(.0001,1000)}
             elif o == 'rf':
                 param_grid = {'criterion': ['gini', 'entropy'], 'n_estimators': sp_randint(10, 50), 'bootstrap': [True, False]}
             else:
@@ -246,11 +246,6 @@ def vocab_index (vocab):
 def embedding_layer (weights):
     layer = Embedding (input_dim = weights.shape[0], output_dim = weights.shape[1], weights = [weights], trainable = False)
     return (layer)
-
-def decay_layer(decay, length):
-    decay = tf.map_fn(lambda tt: tf.map_fn(lambda i: [i]*length, tt), decay)
-    #decay = [list(map(lambda i: [i]*length, tt)) for tt in decay]
-    return (decay)
     
 def cnn_train(top_words, max_length, embedding_length, dropout_W = 0.2, dropout_U = 0.2, optimizer = 'Adam', neurons = 100, learn_rate = .01, momentum= 0.0, W_regularizer = None, U_regularizer = None, init_mode = 'zero', trainable = True, weights = {}):
 
@@ -272,17 +267,17 @@ def cnn_train(top_words, max_length, embedding_length, dropout_W = 0.2, dropout_
         return (model)
         
     else:
-        x = Input(shape = (weights.shape[0],) , dtype = 'int32', name = 'x')
+        x = Input(shape = (max_length,) , dtype = 'int32', name = 'x')
         embed = embedding_layer(weights)(x)
-        decay = Input(shape = (weights.shape[0],1) , name = 'decay')
-        x = merge([embed, decay], mode = 'mul')
-        
-        x = Convolution1D(nb_filter = 300, filter_length = 3, border_mode = 'same', activation = 'relu') (x)
-        x = MaxPooling1D(pool_length = 2)(x)
-        x = LSTM(output_dim=neurons, dropout_W = dropout_W, dropout_U = dropout_U, W_regularizer = W_regularizer, U_regularizer = U_regularizer, init = init_mode) (x)
-        y = Dense(1, activation = 'sigmoid') (x)
+        decay = Input(shape = (max_length, 1) , name = 'decay')
+        xx = merge([embed, decay], mode = lambda x: tf.mul(x[0], x[1]), output_shape = (max_length, weights.shape[1]))
+
+        xx = Convolution1D(nb_filter = 300, filter_length = 3, border_mode = 'same', activation = 'relu') (xx)
+        xx = MaxPooling1D(pool_length = 2)(xx)
+        xx = LSTM(output_dim=neurons, dropout_W = dropout_W, dropout_U = dropout_U, W_regularizer = W_regularizer, U_regularizer = U_regularizer, init = init_mode) (xx)
+        y = Dense(1, activation = 'sigmoid') (xx)
           
-        model = Sequential(inputs = [x, decay], output = [y])        
+        model = Model(input = [x, decay], output = [y])      
         if optimizer == 'SGD':
             optimizer = SGD(lr = learn_rate, momentum = momentum, nesterov = True)
         elif optimizer == 'RMSprop':
@@ -311,16 +306,16 @@ def lstm_train(top_words, max_length, embedding_length, dropout_W = 0.2, dropout
         return (model)
     
     else:
-        x = Input(shape = (weights.shape[0],) , dtype = 'int32', name = 'x')
+        x = Input(shape = (max_length,) , dtype = 'int32', name = 'x')
         embed = embedding_layer(weights)(x)
-        decay = Input(shape = (weights.shape[0], 1) , name = 'decay')
-        decay = decay_layer(decay, weights.shape[1])
-        x = merge([embed, decay], mode = 'mul')
+        decay = Input(shape = (max_length, 1) , name = 'decay')
 
-        x = LSTM(output_dim=neurons, dropout_W = dropout_W, dropout_U = dropout_U, W_regularizer = W_regularizer, U_regularizer = U_regularizer, init = init_mode) (x)
-        y = Dense(1, activation = 'sigmoid') (x)        
+        xx = merge([embed, decay], mode = lambda x: tf.mul(x[0], x[1]), output_shape = (max_length, weights.shape[1]))
+
+        xx = LSTM(output_dim=neurons, dropout_W = dropout_W, dropout_U = dropout_U, W_regularizer = W_regularizer, U_regularizer = U_regularizer, init = init_mode) (xx)
+        y = Dense(1, activation = 'sigmoid') (xx)        
         
-        model = Sequential(inputs = [x, decay], output = [y])        
+        model = Model(input = [x, decay], output = [y])        
         if optimizer == 'SGD':
             optimizer = SGD(lr = learn_rate, momentum = momentum, nesterov = True)
         elif optimizer == 'RMSprop':
@@ -489,6 +484,8 @@ def random_search (x, y, v, t, weights, top_words = 9444, max_review_length=1000
         decay = sp_rand(0, 0.00001).rvs(1)[0]
         decay_factors=[[math.exp(-1 * decay * elapse.total_seconds()/3600) for elapse in tt] for tt in t]
         decay_factors = sequence.pad_sequences(decay_factors, maxlen=max_review_length)
+        shape = decay_factors.shape
+        decay_factors = decay_factors.reshape(shape[0], shape[1], 1)
                 
         if option == 'lstm' or 'option' == 'd_lstm':
             if trainable == True:
@@ -538,12 +535,12 @@ def random_search (x, y, v, t, weights, top_words = 9444, max_review_length=1000
                 print("%s: %.2f%%" % (model.metrics_names[1], score[1]*100))
                 cvscore.append(score[1]*100)            
             else:
-                model.fit(inputs = [v_train, decay_factors], output = [y_train], batch_size = batch_size, nb_epoch = nb_epoch, verbose = 1)
+                model.fit(x = [v_train, decay_factors], y = y_train, batch_size = batch_size, nb_epoch = nb_epoch, verbose = 1)
                 score = model.evaluate(x_test, y_test, batch_size = batch_size, verbose = 1)
                 print("%s: %.2f%%" % (model.metrics_names[1], score[1]*100))
                 cvscore.append(score[1]*100)            
                 
-        temp = {'model':option}
+        temp = {'model':option, 'decay':decay}
         temp.update(preset)
         temp.update({'mean_score': np.mean(cvscore), 'std': np.std(cvscore)})
         data.append(temp)   
@@ -561,15 +558,7 @@ def grid_search (x, y, v, t, SG, top_words = 9444, max_review_length=1000, embed
     for key, value in param_grid.items():
         for kk in value:
             print (option, key, kk)
-            if option == 'd_cnn':
-                preset.update({'input_shape': (max_review_length, embedding_length), key:kk})
-                model = d_cnn_train(**preset)
-                batching = True
-            elif option == 'd_lstm':
-                preset.update({'input_shape': (max_review_length, embedding_length), key:kk})
-                model = d_lstm_train(**preset)
-                batching = True
-            elif option == 'lstm':
+            if option == 'lstm':
                 preset.update({'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length, key:kk})
                 model = lstm_train(**preset)
                 batching = False
