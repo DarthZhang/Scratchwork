@@ -88,7 +88,7 @@ patients_doc = '/mnt/research/data/MIMIC3/physionet.org/works/MIMICIIIClinicalDa
 def main():
 
     np.random.seed(8)
-    options = ['lr']
+    options = ['lr', 'svm', 'rf']
     #'/home/andy/Desktop/MIMIC/temp/pretrain/...'
     try:
         with open ('/home/andy/Desktop/MIMIC/temp/pretrain/x_train.pkl', 'rb') as f:
@@ -150,7 +150,7 @@ def main():
         V_train = [np.ndarray.tolist(i) for i in V_train]
         #Do NOT forget the previous step; it is very important to convert sentence to regular python list... otherwise it'll take forever.
         #SG = gensim.models.Word2Vec(sentences = exons, sg = 1, size = 300, window = 10, min_count = int(len(exons)*.001), hs = 1, negative = 0)
-        SG = gensim.models.Word2Vec(sentences = V_train, sg = 1, size = 300, window = 10, min_count = int(len(V_train)*.01), hs = 1, negative = 0)
+        SG = gensim.models.Word2Vec(sentences = V_train, sg = 1, size = 300, window = 10, hs = 1, negative = 0)
        
         print("...saving dictionary...")
         SG.save("/home/andy/Desktop/MIMIC/temp/pretrain/SG")
@@ -507,7 +507,7 @@ def random_search (x, y, v, t, SG, top_words = 9444, max_review_length=1000, emb
                 print("%s: %.2f%%" % (model.metrics_names[1], score[1]*100))
                 cvscore.append(score[1]*100)                  
                 
-        temp = {'model':option}
+        temp = {'model':option, 'decay':decay}
         temp.update(preset)
         temp.update({'mean_score': np.mean(cvscore), 'std': np.std(cvscore)})
         data.append(temp)   
