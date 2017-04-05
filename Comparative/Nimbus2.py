@@ -226,7 +226,7 @@ def main():
             t1 = TIME.time()
             data = random_search(x=X_train, y=Y_train, v=w_train, t=t_train, weights = weights, option = o, nb_epoch = 16, cv = 3, n_jobs = 1, param_grid = param_grid, preset = preset, n_iter=40, trainable = trainable)    
             t2 = TIME.time()
-            with open ("/home/andy/Desktop/MIMIC/results/random_"+ str(o)+".pkl", 'wb') as f:
+            with open ("/home/andy/Desktop/MIMIC/results/random2_"+ str(o)+".pkl", 'wb') as f:
                 pickle.dump(data, f)
             print ("Pickle successful!")
             print ("Training completed in "+str((t2-t1)/3600) + " hours")
@@ -487,14 +487,14 @@ def random_search (x, y, v, t, weights, top_words = 9444, max_review_length=1000
         shape = decay_factors.shape
         decay_factors = decay_factors.reshape(shape[0], shape[1], 1)
                 
-        if option == 'lstm' or 'option' == 'd_lstm':
+        if option == 'lstm' or option == 'd_lstm':
             if trainable == True:
                 preset.update({'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length})
             else:
                 preset.update({'top_words':weights.shape[0], 'max_length':max_review_length, 'embedding_length': weights.shape[1]}, trainable = False, weights = weights)
             model = lstm_train(**preset)
             classic = False
-        elif option == 'cnn' or 'option' == 'd_cnn':
+        elif option == 'cnn' or option == 'd_cnn':
             if trainable == True:
                 preset.update({'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length}, trainable = True)
             else:
