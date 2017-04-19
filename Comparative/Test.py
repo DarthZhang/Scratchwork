@@ -422,13 +422,11 @@ def testing(top_words = 9444, max_review_length = 1000, embedding_length = 300, 
         X_train = sequence.pad_sequences(X_train, maxlen = max_review_length)    
         X_test = sequence.pad_sequences(X_test, maxlen=max_review_length) 
         V_train = sequence.pad_sequences(V_train, maxlen= max_review_length)
-        V_test = sequence.pad_sequences(V_test, maxlen= max_review_length)
         Y_train = np.array(Y_train)
         Y_test = np.array(Y_test)
         t_train = np.array(t_train)
         t_test = np.array(t_test)
     
-        decay = param_grid['decay']
         decay_factors=[[math.exp(-1 * decay * elapse.total_seconds()/3600) for elapse in tt] for tt in t_train]
         decay_factors = sequence.pad_sequences(decay_factors, maxlen=max_review_length)
         shape = decay_factors.shape
@@ -589,50 +587,6 @@ def random_search (x, y, v, t, weights, top_words = 9444, max_review_length=1000
         data.append(temp)   
     return (data)      
         
-
-def grid_search (x, y, v, t, SG, top_words = 9444, max_review_length=1000, embedding_length =300, batch_size = 128, nb_epoch=16, cv=3, n_jobs = 1, option = 'd_cnn', param_grid = {}, preset = {}):       
-    x = sequence.pad_sequences (x, maxlen=max_review_length)
-    data = []
-    x = np.array(x)     #convert to numpy form before splitting
-    v = np.array(v)
-    y = np.array(y)
-    t = np.array(t)
-    #for key, value in param_grid.iteritems():
-    for key, value in param_grid.items():
-        for kk in value:
-            print (option, key, kk)
-            if option == 'lstm':
-                preset.update({'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length, key:kk})
-                model = lstm_train(**preset)
-                batching = False
-            elif option == 'cnn':
-                preset.update({'top_words':top_words, 'max_length':max_review_length, 'embedding_length': embedding_length, key:kk})
-                model = cnn_train(**preset)
-                batching = False
-            
-            skf = StratifiedKFold (n_splits = cv, shuffle = True, random_state = 8)
-            cvscore = []
-            for train, test in skf.split(x, y):
-                x_train, x_test = x[train], x[test]
-                y_train, y_test = y[train], y[test]
-                t_train, t_test = t[train], t[test]
-                v_train, v_test = v[train], v[test]
-                
-                if batching == True:
-                    model.fit_generator(decay_generator(x = v_train, y = y_train, t_stamps = t_train, SG = SG), samples_per_epoch = len(x_train), nb_epoch = nb_epoch, nb_worker=n_jobs)
-                    score = model.evaluate_generator(decay_generator(x = v_test, y = y_test, t_stamps = t_test, SG = SG), val_samples = len(x_test), nb_worker = n_jobs)
-                    print("%s: %.2f%%" % (model.metrics_names[1], score[1]*100))
-                    cvscore.append(score[1]*100)
-                else:
-                    model.fit(x_train, y_train, batch_size = batch_size, nb_epoch = nb_epoch, verbose = 1)
-                    score = model.evaluate(x_test, y_test, batch_size = batch_size, verbose = 1)
-                    print("%s: %.2f%%" % (model.metrics_names[1], score[1]*100))
-                    cvscore.append(score[1]*100)                  
-                    
-            temp = {'model':option, key:kk, 'mean_score': np.mean(cvscore), 'std': np.std(cvscore)}
-            data.append(temp)   
-    return (data)
-
     
 ##############################
 
