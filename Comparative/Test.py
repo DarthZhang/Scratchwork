@@ -25,6 +25,7 @@ from pandas.io import sql as transfer
 
 import numpy as np
 import gensim
+import h5py
 #import cython
 #import glove
 import math
@@ -141,9 +142,9 @@ def main():
             param_grid= dict(optimizer = settings['optimizer'], learn_rate = settings['learn_rate'], momentum = settings['momentum'],  dropout_W = settings['dropout_W'], dropout_U = settings['dropout_U'], init_mode = settings['init_mode'])
             
         if settings['model'] == 'd_lstm' or settings['model'] == 'd_cnn':
-            trainable = True
-        else:
             trainable = False
+        else:
+            trainable = True
                 
         t1 = TIME.time()
         data = testing(option = settings['model'], nb_epoch = 100, cv = 3, n_jobs = 1, param_grid = param_grid, decay = settings['decay'], trainable = trainable)    
@@ -465,7 +466,10 @@ def testing(top_words = 9444, max_review_length = 1000, embedding_length = 300, 
     
         if classic == True:
             model.fit(decay_norm(x=V_train, t_stamps = t_train, decay = decay), Y_train)
+            with open ('/home/andy/Desktop/MIMIC/best_'+str(option)+'.pkl', 'wb') as f:
+                pickle.dump(model, f)
             predict =model.predict(X_test)
+            predict = [round(p) for p in predict]
             acc = accuracy_score(Y_test, predict)
             f1 = f1_score(Y_test, predict)
             auc = roc_auc_score(Y_test, predict)
@@ -476,8 +480,9 @@ def testing(top_words = 9444, max_review_length = 1000, embedding_length = 300, 
             aucs.append(auc)
         elif trainable == True:
             model.fit(X_train, Y_train, batch_size = batch_size, nb_epoch = nb_epoch, verbose = 1)
+            model.save('/home/andy/Desktop/MIMIC/best_'+str(option)+'.h5')
             acc = model.evaluate(X_test, Y_test, batch_size = batch_size, verbose = 1)
-            predict = model.predict(X_test)
+            predict = model.predict_classes(X_test) 
             f1 = f1_score(Y_test, predict)
             auc = roc_auc_score(Y_test, predict)
             
@@ -487,8 +492,9 @@ def testing(top_words = 9444, max_review_length = 1000, embedding_length = 300, 
             aucs.append(auc)           
         else:
             model.fit(x = [V_train, decay_factors], y = Y_train, batch_size = batch_size, nb_epoch = nb_epoch, verbose = 1)
+            model.save('/home/andy/Desktop/MIMIC/best_'+str(option)+'.h5')            
             acc = model.evaluate(X_test, Y_test, batch_size = batch_size, verbose = 1)
-            predict = model.predict(X_test)
+            predict = model.predict_classes(X_test)
             f1 = f1_score(Y_test, predict)
             auc = roc_auc_score(Y_test, predict)
             
