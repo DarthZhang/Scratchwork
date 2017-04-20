@@ -219,14 +219,14 @@ def main():
                 param_grid= dict(optimizer = optimizer, learn_rate = learn_rate, momentum = momentum,  dropout_W = dropout_W, dropout_U = dropout_U, init_mode = init_mode)
             
             if o == 'd_lstm' or o == 'd_cnn':
-                trainable = True
-            else:
                 trainable = False
+            else:
+                trainable = True
                 
             t1 = TIME.time()
             data = random_search(x=X_train, y=Y_train, v=w_train, t=t_train, weights = weights, option = o, nb_epoch = 16, cv = 3, n_jobs = 1, param_grid = param_grid, preset = preset, n_iter=40, trainable = trainable)    
             t2 = TIME.time()
-            with open ("/home/andy/Desktop/MIMIC/results/random2_"+ str(o)+".pkl", 'wb') as f:
+            with open ("/home/andy/Desktop/MIMIC/results/random_"+ str(o)+".pkl", 'wb') as f:
                 pickle.dump(data, f)
             print ("Pickle successful!")
             print ("Training completed in "+str((t2-t1)/3600) + " hours")
@@ -523,6 +523,7 @@ def random_search (x, y, v, t, weights, top_words = 9444, max_review_length=1000
             y_train, y_test = y[train], y[test]
             t_train, t_test = t[train], t[test]
             v_train, v_test = v[train], v[test]
+            decay_train, decay_test = decay_factors[train], decay_factors[test]
 
             if classic == True:
                 model.fit(decay_norm(x=v_train, t_stamps = t_train, decay = decay), y_train)
@@ -535,8 +536,8 @@ def random_search (x, y, v, t, weights, top_words = 9444, max_review_length=1000
                 print("%s: %.2f%%" % (model.metrics_names[1], score[1]*100))
                 cvscore.append(score[1]*100)            
             else:
-                model.fit(x = [v_train, decay_factors], y = y_train, batch_size = batch_size, nb_epoch = nb_epoch, verbose = 1)
-                score = model.evaluate(x_test, y_test, batch_size = batch_size, verbose = 1)
+                model.fit(x = [v_train, decay_train], y = y_train, batch_size = batch_size, nb_epoch = nb_epoch, verbose = 1)
+                score = model.evaluate([v_test, decay_test], y_test, batch_size = batch_size, verbose = 1)
                 print("%s: %.2f%%" % (model.metrics_names[1], score[1]*100))
                 cvscore.append(score[1]*100)            
                 
