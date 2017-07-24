@@ -87,7 +87,7 @@ def lab_features(hadm, labs):
                 if labevents[h][labs[item]] == None:
                     labevents[h][labs[item]] = [1.0*sums[item] / counts[item], counts[item]]
                 else:
-                    labevents[h][labs[item]][0] += (labevents[h][labs[item]][0] * labevents[h][labs[item]][1] + sums[item])/(counts[item] + labevents[h][labs[item]][1])
+                    labevents[h][labs[item]][0] = (labevents[h][labs[item]][0] * labevents[h][labs[item]][1] + sums[item])/(counts[item] + labevents[h][labs[item]][1])
                     labevents[h][labs[item]][1] += counts[item]
     
     with open ('/home/andy/Desktop/MIMIC/vars/labs.pkl', 'wb') as f:
@@ -128,7 +128,7 @@ def chart_features(hadm, chartevents):
                     vitals[h][chartevents[item]][0] += mins[item]
                     vitals[h][chartevents[item]][1] += maxs[item]
                     mean = (vitals[h][chartevents[item]][2] * vitals[h][chartevents[item]][3] + sums[item])/(counts[item] + vitals[h][chartevents[item]][3])
-                    vitals[h][chartevents[item]][2] += mean
+                    vitals[h][chartevents[item]][2] = mean
                     vitals[h][chartevents[item]][3] += counts[item]
     with open ('/home/andy/Desktop/MIMIC/vars/charts.pkl', 'wb') as f:
         pickle.dump(vitals, f)
