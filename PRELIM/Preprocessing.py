@@ -80,15 +80,23 @@ def lab_features(hadm, labs):
         df = pd.read_csv(filename_labevents, header = None, nrows = chunksize, skiprows= i, names = cols)
         temp = df[(df.HADM_ID.isin(hadm)) & (df.ITEMID.isin(vocab))]
         for h in list(set(temp.HADM_ID)):
+            mins = temp[temp.HADM_ID==h].groupby(['ITEMID']).min().VALUENUM
+            maxs = temp[temp.HADM_ID==h].groupby(['ITEMID']).max().VALUENUM
             sums = temp[temp.HADM_ID==h].groupby(['ITEMID']).sum().VALUENUM
             counts = temp[temp.HADM_ID==h].groupby(['ITEMID']).size()
             h = int(h)
             for item in counts.index:
                 if labevents[h][labs[item]] == None:
-                    labevents[h][labs[item]] = [1.0*sums[item] / counts[item], counts[item]]
+                    mean = 1.0*sums[item] / counts[item]
+                    labevents[h][labs[item]] = [mins[item], maxs[item], mean, counts[item]]
                 else:
-                    labevents[h][labs[item]][0] = (labevents[h][labs[item]][0] * labevents[h][labs[item]][1] + sums[item])/(counts[item] + labevents[h][labs[item]][1])
-                    labevents[h][labs[item]][1] += counts[item]
+                    if mins[item] < labevents[h][labs[item]][0]:
+                        labevents[h][labs[item]][0] = mins[item]
+                    if maxs[item] > labevents[h][labs[item]][1]:
+                        labevents[h][labs[item]][1] = maxs[item]                           
+                    mean = (labevents[h][labs[item]][2] * labevents[h][labs[item]][3] + sums[item])/(counts[item] + labevents[h][labs[item]][3])
+                    labevents[h][labs[item]][2] = mean
+                    labevents[h][labs[item]][3] += counts[item]
     
     with open ('/home/andy/Desktop/MIMIC/vars/labs.pkl', 'wb') as f:
         pickle.dump(labevents, f)
@@ -125,8 +133,10 @@ def chart_features(hadm, chartevents):
                     mean = 1.0*sums[item] / counts[item]
                     vitals[h][chartevents[item]] = [mins[item], maxs[item], mean, counts[item]]
                 else:
-                    vitals[h][chartevents[item]][0] += mins[item]
-                    vitals[h][chartevents[item]][1] += maxs[item]
+                    if mins[item] < vitals[h][chartevents[item]][0]:
+                        vitals[h][chartevents[item]][0] = mins[item]
+                    if maxs[item] > vitals[h][chartevents[item]][1]:
+                        vitals[h][chartevents[item]][1] = maxs[item]
                     mean = (vitals[h][chartevents[item]][2] * vitals[h][chartevents[item]][3] + sums[item])/(counts[item] + vitals[h][chartevents[item]][3])
                     vitals[h][chartevents[item]][2] = mean
                     vitals[h][chartevents[item]][3] += counts[item]
@@ -137,6 +147,17 @@ def chart_features(hadm, chartevents):
         charts[h] = [[c[0], c[1], c[2]] for c in vitals[h]]
     
     return (charts, c_sentences)
+    
+def discretize (dct, filename, events):
+    vocab = list(events.keys())
+    with gzip.open(filename, 'r') as f:
+        for numlines, l in enumerate(f): pass
+    
+    cols = list(pd.read_csv(filename, nrows=0).columns)
+    for i in range(0, numlines, 1000000):
+        
+        
+    return (dct)
     
 def pairwise(iterable):
     "s -> (s0,s1), (s1,s2), (s2, s3), ..."
