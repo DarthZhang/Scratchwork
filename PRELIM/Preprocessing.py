@@ -280,7 +280,9 @@ def pos_neg_split(subj, admits, HADM):
             #    else:
             #        plus.append((s, t1[0], t1[1], 1))
             if len(plus) >0:
-                pos.append(plus[0])
+                for k in plus:
+                    if k[1] in HADM:
+                        pos.append(plus[0])
             elif len(minus)>0:
                 if t[0][1] in HADM:
                     neg.append((s, t[0][1], 0))
@@ -291,6 +293,13 @@ def pos_neg_split(subj, admits, HADM):
                     neg.append((s, hadm[0], 0))
     return (pos, neg)
 
+def demographics (subj, hadm):
+    demo = []
+    return (demo)
+
+def group_icd9 (subj, hadm):
+    dx = []
+    return (dx)
 
 if __name__ == '__main__':
     dx = pd.read_csv(filename_dx)
