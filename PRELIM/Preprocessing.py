@@ -27,8 +27,9 @@ filename_chartevents = ''
 
 labs = {50862:0, 50885:1, 51006:2, 50893:3, 50912:4, 50983: 5, 50971: 6, 50882: 7, 50931: 8, 50820: 9, 50816:10, 50817: 11, 50818: 12, 51265: 13, 51108: 14, 51300:15, 50960:16, 50813:17 }
 full_labs = {50862:0, 51006:1, 50893:2, 50912:3, 50983: 4, 50971: 5, 50882: 6, 50931: 7, 50820: 8, 50818: 9, 51265: 10, 50960:11, 50813:12}
-chartevents = {221: 0, 220045: 0, 3313: 1, 3315: 1, 3317:1, 3319: 1, 3321: 1, 3323: 1, 3325:1, 8502: 2, 8503: 2, 8504: 2, 8505: 2, 8506: 2, 8507: 2, 8508:2, 198: 3, 676: 4, 677:4, 223762:4, 678:4, 679:4, 7884:5, 3603:5, 8113: 5, 618:5, 220210: 5, 227428:6}
+#chartevents = {221: 0, 220045: 0, 3313: 1, 3315: 1, 3317:1, 3319: 1, 3321: 1, 3323: 1, 3325:1, 8502: 2, 8503: 2, 8504: 2, 8505: 2, 8506: 2, 8507: 2, 8508:2, 198: 3, 676: 4, 677:4, 223762:4, 678:4, 679:4, 7884:5, 3603:5, 8113: 5, 618:5, 220210: 5, 227428:6}
 
+chartevents = {221: 0, 220045:0, 6: 1, 455:1, 51:1, 442:1, 6701:1, 220179:1, 220050:1, 8364:2, 8441:2, 8368:2, 8440:2, 8555:2, 220180:2, 220051:2, 223761:3, 678:3, 223762:4, 676:4, 7884:5, 3603:5, 8113:5, 618:5, 615:5, 220210:5, 224690:5, 646:6, 220277:6, 227428:7}
 lab_names = {50813: 'Lactate', 50818: 'PaCO2', 50820: 'PH', 50862: 'Albumin', 50882: 'HCO3', 50893: 'Ca', 50912: 'Cre', 50931: 'Glc', 50960: 'Mg', 50971: 'K', 50983: 'Na', 51006: 'BUN', 51265: 'Platelets'}
 
 #mimic = 'MIMIC3'
@@ -138,8 +139,7 @@ def chart_features(hadm, chartevents):
     vocab = list(chartevents.keys())
     
     for h in hadm:
-        vitals[h] = [None]*len(vocab)
-
+        vitals[h] = [None]*len(list(set(chartevents.values())))
         
     with gzip.open(filename_chartevents, 'r') as f:
         for numlines, l in enumerate(f): pass
@@ -289,20 +289,64 @@ def pos_neg_split(subj, admits, HADM):
                 else:
                     neg.append(minus[0])
             elif len(hadm)<2:
-                if hadm[0] in HADM:
-                    neg.append((s, hadm[0], 0))
+                #if hadm[0] in HADM:
+                #    neg.append((s, hadm[0], 0))
+                pass
     return (pos, neg)
 
-def demographics (subj, hadm):
-    demo = []
+def demographics (subj, HADM):
+    demo = {}    
+    
+    marital = {'MARRIED': 0, 'SEPARATED': 1, 'SINGLE':2, 'WIDOWED':3, 'DIVORCED': 4, 'LIFE PARTNER':5, 'UNKNOWN (DEFAULT)': 6}
+    ethn = {'OTHER': 0, 'WHITE': 1, 'CARIB': 2, 'ASIAN': 3, 'AMERI': 4, 'BLACK': 5, 'HISPA': 6, 'SOUTH': 7, 'MULTI': 8, 'MIDDL': 9, 'PORTU': 10, 'NATIV': 11, 'UNABL': 12}
+    insurance = {'Medicaid': 0, 'Government': 1, 'Medicare': 2, 'Self Pay': 3, 'Private': 4}
+    
+    for s in subj:
+        h = admits[(admits.SUBJECT_ID==s) & (admits.HADM_ID.isin(HADM))].HADM_ID.values[0]
+        t = pd.to_datetime(admits[(admits.SUBJECT_ID==s) & (admits.HADM_ID==h)].ADMITTIME.values[0])
+        dob = pd.to_datetime(pts[pts.SUBJECT_ID==s].DOB.values[0])
+        #age
+        age = round(((t-dob).days)/365)
+        if age >100:
+            age = 89.0
+        #LOS
+        los =  icustays[icustays.SUBJECT_ID == s].LOS.values[0]
+        #insurance
+        insure = admits[admits.HADM_ID ==h].INSURANCE.values[0]
+        
+        demo [s] = {'age': age, 'LOS': los, 'insurance': insurance[insure]}
+        
     return (demo)
 
-def group_icd9 (subj, hadm):
-    dx = []
-    return (dx)
+def group_icd9 (subj, HADM):
+    count = 0;
+    with open ('/home/andy/Desktop/MIMIC/vars/dx/feature_dictionary.pkl', 'rb') as f:
+        dct = pickle.load(f)
+    dx = {}
+    d_sentences = {}
+    for s in subj:
+        dx[s] = [0] * len(dct)
+        
+        count+=1; print (count)
+        hadm = list(set(admits[admits['SUBJECT_ID']==s].HADM_ID.values))        
+        h = admits[(admits.SUBJECT_ID==s) & (admits.HADM_ID.isin(HADM))].HADM_ID.values[0]
+        
+        t = [(pd.to_datetime(admits[admits['HADM_ID']==i]['ADMITTIME'].values[0]), i) for i in hadm]
+        t0 = pd.to_datetime(admits[admits.HADM_ID==h].ADMITTIME.values[0])
+        
+        d = []
+        for i in t:
+            if i[0] <= t0:
+                temp = list(set(diagnoses[diagnoses.HADM_ID==h].ICD9_CODE))
+                d.append([ch[0:3] for ch in temp])
+                for j in temp:
+                    dx[s][dct[j[0:3]]] += 1        
+        d_sentences[s] = d
+                
+    return (dx, d_sentences)
 
 if __name__ == '__main__':
-    dx = pd.read_csv(filename_dx)
+    diagnoses = pd.read_csv(filename_dx)
     admits = pd.read_csv(filename_admits)
     pts = pd.read_csv(filename_pts)
     icustays = pd.read_csv(filename_icustays)
