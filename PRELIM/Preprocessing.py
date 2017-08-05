@@ -10,7 +10,7 @@ import numpy as np
 import pickle
 import gzip
 import math
-import datetime
+import datetime, time
 from itertools import tee
 from pandas.tools.plotting import scatter_matrix
 from scipy import stats
@@ -25,11 +25,13 @@ filename_chartevents = ''
 filename_ddx = ''
 
 labs = {50862:0, 50885:1, 51006:2, 50893:3, 50912:4, 50983: 5, 50971: 6, 50882: 7, 50931: 8, 50820: 9, 50816:10, 50817: 11, 50818: 12, 51265: 13, 51108: 14, 51300:15, 50960:16, 50813:17 }
-full_labs = {50862:0, 51006:1, 50893:2, 50912:3, 50983: 4, 50971: 5, 50882: 6, 50931: 7, 50820: 8, 50818: 9, 51265: 10, 50960:11, 50813:12}
+#full_labs = {50862:0, 51006:1, 50893:2, 50912:3, 50983: 4, 50971: 5, 50882: 6, 50931: 7, 50820: 8, 50818: 9, 51265: 10, 50960:11, 50813:12}
+full_labs = {50862:6, 51006:7, 50893:8, 50912:9, 50983: 10, 50971: 11, 50882: 12, 50931: 13, 50820: 14, 50818: 15, 51265: 16, 50960:17, 50813:18}
+
 #chartevents1 = {221: 0, 220045: 0, 3313: 1, 3315: 1, 3317:1, 3319: 1, 3321: 1, 3323: 1, 3325:1, 8502: 2, 8503: 2, 8504: 2, 8505: 2, 8506: 2, 8507: 2, 8508:2, 198: 3, 676: 4, 677:4, 223762:4, 678:4, 679:4, 7884:5, 3603:5, 8113: 5, 618:5, 220210: 5, 227428:6}
 
 #chartevents2 = {221: 0, 220045:0, 6: 1, 455:1, 51:1, 442:1, 6701:1, 220179:1, 220050:1, 8364:2, 8441:2, 8368:2, 8440:2, 8555:2, 220180:2, 220051:2, 223761:3, 678:3, 223762:4, 676:4, 7884:5, 3603:5, 8113:5, 618:5, 615:5, 220210:5, 224690:5, 646:6, 220277:6, 227428:7}
-chartevents = {221: 0, 220045:0, 6: 1, 455:1, 51:1, 442:1, 6701:1, 220179:1, 220050:1, 8364:2, 8441:2, 8368:2, 8440:2, 8555:2, 220180:2, 220051:2, 223761:3, 678:3, 7884:4, 3603:4, 8113:4, 618:4, 615:4, 220210:4, 224690:4, 646:5, 220277:5} 
+chartevents = {221: 0, 220045:0, 6: 1, 455:1, 51:1, 442:1, 6701:1, 220179:1, 220050:1, 8364:2, 8441:2, 8368:2, 8440:2, 8555:2, 220180:2, 220051:2, 223761:3, 678:3, 679: 3, 7884:4, 3603:4, 8113:4, 618:4, 615:4, 220210:4, 224690:4, 646:5, 220277:5} 
 lab_names = {50813: 'Lactate', 50818: 'PaCO2', 50820: 'PH', 50862: 'Albumin', 50882: 'HCO3', 50893: 'Ca', 50912: 'Cre', 50931: 'Glc', 50960: 'Mg', 50971: 'K', 50983: 'Na', 51006: 'BUN', 51265: 'Platelets'}
 chart_names = {0: 'HR', 1: 'SBP', 2: 'DBP', 3: 'TEMP', 4: 'RR', 5: 'SPO2'}
 
@@ -58,6 +60,8 @@ def wrangling (stays, diagnoses):
     mortality = cohort.DOD.notnull() & ((cohort.INTIME <= cohort.DOD) & (cohort['1YR'] >= cohort['DOD']))
     mortality = mortality | (cohort.DEATHTIME.notnull() & ((cohort.INTIME <= cohort.DEATHTIME) & (cohort['1YR'] >= cohort['DEATHTIME'])))
     cohort['MORTALITY_1YR'] = mortality.astype(int)
+    mortality = cohort.DOD.notnull() | cohort.DEATHTIME.notnull()
+    cohort['MORTALITY'] = mortality.astype(int)
     
     #merge with diagnoses to make 
     diagnoses = cohort.merge(diagnoses, on = ['SUBJECT_ID', 'HADM_ID'])
@@ -70,15 +74,16 @@ def wrangling (stays, diagnoses):
     codes = codes.ix[codes.COUNT>0]
     
     #readmit table
-    df = cohort[['SUBJECT_ID', 'HADM_ID', 'ADMITTIME', 'DISCHTIME']].drop_duplicates()
+    df = cohort[cohort.MORTALITY ==0] [['SUBJECT_ID', 'HADM_ID', 'ADMITTIME', 'DISCHTIME']].drop_duplicates()
     #df.set_index('SUBJECT_ID', inplace = True)
     readm = df.groupby('SUBJECT_ID').filter(lambda x: len(x['HADM_ID'])>1)
-    readm = readm.sort('ADMITTIME', inplace= True, ascending = False)
-    readm = readm.set_index('SUBJECT_ID')
+    readm = readm.sort(['SUBJECT_ID', 'ADMITTIME'], ascending = [True, False])
+    #readm = readm.set_index('SUBJECT_ID')
     readm['diff'] = np.nan
-    for idx in readm.index:
-        readm.loc[idx].diff = readm.loc[idx].ADMITTIME - readm.loc[idx].DISCHTIME.shift(1)
-
+    for s in list(set(readm.SUBJECT_ID)):
+        readm.ix[readm.SUBJECT_ID == s, 'diff'] = readm[readm.SUBJECT_ID == s].DISCHTIME - readm[readm.SUBJECT_ID==s].ADMITTIME.shift(1)
+    readm['diff'] = readm['diff'].apply(lambda x: -1.0* x.days if str(x) != 'NaT' else 0)
+    readm = readm[readm['diff'] != 0]
     
     #4. preliminary pos-neg split
     pos, neg = pos_neg_split(stays, admits)    
@@ -151,7 +156,7 @@ def lab_features(hadm, labs):
     
 def chart_features(hadm, chartevents):
     vitals = {}
-    chunksize = 100000
+    chunksize = 10**6
     vocab = list(chartevents.keys())
     
     for h in hadm:
@@ -238,28 +243,78 @@ def get_stats(events, dct):
     
     return (quints, hadm)
     
-def sentences (hadm, labs, quints, filename):
-    sentences = {}; #l_total = {};
+def sentences (hadm, dictionary, filename):
+    charts = {}; #l_total = {};
     chunksize = 100000
-    vocab = list(labs.keys())
+    vocab = list(dictionary.keys())
     for h in hadm:
-        sentences[h] = []
+        charts[h] = {}
     #for k in vocab:
      #   l_total[k] = []
 
-    with gzip.open(filename, 'r') as f:
-        for numlines, l in enumerate(f): pass
-    numlines+=1
-    
     cols = list(pd.read_csv(filename, nrows=0).columns)
-    for i in range(0, numlines, chunksize):
-        print (i)
-        #add rows to l_total
-        df = pd.read_csv(filename, header = None, nrows = chunksize, skiprows= i, names = cols)
+    
+    #### OPTIONAL ####
+    #Get ranking of Chartevents by sampling frequency#
+    items= pd.read_csvitems = pd.read_csv('/home/andy/Desktop/MIMIC/csv/D_ITEMS.csv.gz' )
+    events = {}
+    for l in list(set(items.ITEMID)):
+        events[l] = 0
+    
+    start = time.time(); count = 0
+    for df in pd.read_csv(filename, iterator = True, chunksize = chunksize):
+        count+=1
+        print ("Chunk: {0}, {1}".format(df.shape[0]*count, time.time() - start))
+        
+        for idx in list(set(df.groupby('ITEMID').size().index)):
+            events[idx] += df.groupby('ITEMID').size()[idx]
+    sorted_events = sorted(events.items(), key = lambda x: x[1], reverse = True)
+    lst = []
+    for i in sorted_events:
+        lst.append([i[0], items[items.ITEMID==i[0]].LABEL.values[0], i[1]])
+    
+    ####Make Sentences####    
+    start = time.time(); count = 0
+    for df in pd.read_csv(filename, iterator = True, chunksize = chunksize):
+        count+=1
+        print ("Chunk: {0}, {1}".format(df.shape[0]*count, time.time() - start))
+
+        df.columns = cols
+        df = df[(df.ERROR ==0) & (df.HADM_ID.isin(hadm)) & (df.ITEMID.isin(vocab))][['SUBJECT_ID', 'HADM_ID', 'ITEMID', 'CHARTTIME', 'VALUENUM']]
+        df['TIME'] = df['CHARTTIME'].values.astype('<M8[h]')
+        
+        temp = pd.DataFrame({'sum': df.groupby(['HADM_ID','TIME', 'ITEMID'])['VALUENUM'].sum(), 'count': df.groupby(['HADM_ID', 'TIME', 'ITEMID'])['VALUENUM'].size()}).reset_index()
+        dct = temp.to_dict(orient='split')['data']
+        for d in dct:
+            if d[1] not in charts[d[0]].keys():
+                charts[d[0]][d[1]] = {dictionary[d[2]]: [d[3], d[4]]}
+            elif d[2] not in charts[d[0]][d[1]].keys():
+                charts[d[0]][d[1]][dictionary[d[2]]] = [d[3], d[4]]
+            else:
+                charts[d[0]][d[1]][dictionary[d[2]]][0] += d[3]
+                charts[d[0]][d[1]][dictionary[d[2]]][1] += d[4]
+        del dct; del temp
+    
+    events = {}
+    for h in charts.keys():
+        events[h] = {}
+        for t in charts[h].keys():
+            events[h][t] = [None]*19
+            for k, v in charts[h][t].items():
+                events[h][t][k] = v[1]/v[0]
+    events = {}
+    for h in charts.keys():
+        events[h] = []
+        for t in charts[h].keys():
+            temp = [None]*19
+            for k, v in charts[h][t].items():
+                temp[k] = v[1]/v[0]
+            events[h].append([t, temp])    
+            
         #temp = list(df[df.ITEMID.isin(vocab)][['ITEMID', 'VALUENUM']].values.tolist())
         #for item in temp:
         #    l_total[item[0]].append(item[1])
-               
+                      
         #make sentences for target patients
         temp = df[(df.HADM_ID.isin(hadm)) & (df.ITEMID.isin(vocab))]
         admissions = list(set(temp.HADM_ID.dropna()))
