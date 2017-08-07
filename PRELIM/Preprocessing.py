@@ -8,12 +8,13 @@ Created on Fri Jul 21 14:50:50 2017
 import pandas as pd
 import numpy as np
 import pickle
-import gzip
+#import gzip
 import math
 import datetime, time
 from itertools import tee
 from pandas.tools.plotting import scatter_matrix
 from scipy import stats
+from sklearn.preprocessing import Imputer
 #import pymysql as mysql
 
 filename_dx = ''
@@ -34,6 +35,7 @@ full_labs = {50862:6, 51006:7, 50893:8, 50912:9, 50983: 10, 50971: 11, 50882: 12
 chartevents = {221: 0, 220045:0, 6: 1, 455:1, 51:1, 442:1, 6701:1, 220179:1, 220050:1, 8364:2, 8441:2, 8368:2, 8440:2, 8555:2, 220180:2, 220051:2, 223761:3, 678:3, 679: 3, 7884:4, 3603:4, 8113:4, 618:4, 615:4, 220210:4, 224690:4, 646:5, 220277:5} 
 lab_names = {50813: 'Lactate', 50818: 'PaCO2', 50820: 'PH', 50862: 'Albumin', 50882: 'HCO3', 50893: 'Ca', 50912: 'Cre', 50931: 'Glc', 50960: 'Mg', 50971: 'K', 50983: 'Na', 51006: 'BUN', 51265: 'Platelets'}
 chart_names = {0: 'HR', 1: 'SBP', 2: 'DBP', 3: 'TEMP', 4: 'RR', 5: 'SPO2'}
+ref_ranges = [83.757076260234783, 118.82208983706279, 61.950770137747298, 98.126785714285717, 18.567563025210085, 96.941729323308266, 4.5, 12.5, 9.3000000000000007, 0.89999999999999991, 140.5, 4.25, 25.0, 90.0, 7.4000000000000004, 39.0, 275.0, 1.75, 1.5]
 
 #mimic = 'MIMIC3'
 #host = 'illidan-gpu-1.egr.msu.edu'
@@ -84,14 +86,29 @@ def wrangling (stays, diagnoses):
         readm.ix[readm.SUBJECT_ID == s, 'diff'] = readm[readm.SUBJECT_ID == s].DISCHTIME - readm[readm.SUBJECT_ID==s].ADMITTIME.shift(1)
     readm['diff'] = readm['diff'].apply(lambda x: -1.0* x.days if str(x) != 'NaT' else 0)
     readm = readm[readm['diff'] != 0]
-    
-    #4. preliminary pos-neg split
-    pos, neg = pos_neg_split(stays, admits)    
-    hadm = [s[2] for s in pos+neg]
-    
-    labevents = lab_features(hadm, labs)
-    
-    return (pos, neg)
+    readmits = list(set(readm[readm['diff'] <=30].HADM_ID))
+    cohort['READMISSION'] = cohort['HADM_ID'].apply(lambda x: 1 if x in readmits else 0)
+
+    #make labels
+    Y = {}
+    labels = cohort[['HADM_ID', 'READMISSION', 'MORTALITY_INHOSPITAL', 'MORTALITY_30D', 'MORTALITY_1YR']]
+    labels.index = labels.HADM_ID; del labels['HADM_ID']
+    lst = list(set(labels.index))
+    labels = labels.to_dict()
+    for h in lst:
+        if (labels['READMISSION'][h] == 1): 
+            y = [0, 1, 0, 0, 0]
+        elif (labels['MORTALITY_INHOSPITAL'][h] == 1 ):
+            y = [0, 0, 1, 0, 0]
+        elif ((labels['MORTALITY_30D'][h] == 1) & (labels['MORTALITY_INHOSPITAL'][h] == 0)):
+            y = [0, 0, 0, 1, 0]
+        elif ((labels['MORTALITY_1YR'][h] == 1) & (labels['MORTALITY_30D'][h] == 0) & (labels['MORTALITY_INHOSPITAL'][h] == 0)):
+            y = [0, 0, 0, 0, 1]
+        else:
+            y = [1, 0, 0, 0, 0]
+        Y[h] = y
+    return (Y)
+
 
 def lab_features(hadm, labs):
     labevents = {}
@@ -243,48 +260,59 @@ def get_stats(events, dct):
     
     return (quints, hadm)
     
-def sentences (hadm, dictionary, filename):
+def sentences (cohort, dictionary, filename):
     charts = {}; #l_total = {};
     chunksize = 100000
     vocab = list(dictionary.keys())
+    hadm = list(set(cohort.HADM_ID))
     for h in hadm:
         charts[h] = {}
     #for k in vocab:
      #   l_total[k] = []
 
-    cols = list(pd.read_csv(filename, nrows=0).columns)
+    
     
     #### OPTIONAL ####
     #Get ranking of Chartevents by sampling frequency#
-    items= pd.read_csvitems = pd.read_csv('/home/andy/Desktop/MIMIC/csv/D_ITEMS.csv.gz' )
-    events = {}
-    for l in list(set(items.ITEMID)):
-        events[l] = 0
-    
-    start = time.time(); count = 0
-    for df in pd.read_csv(filename, iterator = True, chunksize = chunksize):
-        count+=1
-        print ("Chunk: {0}, {1}".format(df.shape[0]*count, time.time() - start))
-        
-        for idx in list(set(df.groupby('ITEMID').size().index)):
-            events[idx] += df.groupby('ITEMID').size()[idx]
-    sorted_events = sorted(events.items(), key = lambda x: x[1], reverse = True)
-    lst = []
-    for i in sorted_events:
-        lst.append([i[0], items[items.ITEMID==i[0]].LABEL.values[0], i[1]])
+    #items= pd.read_csvitems = pd.read_csv('/home/andy/Desktop/MIMIC/csv/D_ITEMS.csv.gz' )
+    #events = {}
+    #for l in list(set(items.ITEMID)):
+    #    events[l] = 0
+    #cols = list(pd.read_csv(filename, nrows=0).columns)
+    #start = time.time(); count = 0
+    #for df in pd.read_csv(filename, iterator = True, chunksize = chunksize):
+    #    count+=1
+    #    print ("Chunk: {0}, {1}".format(df.shape[0]*count, time.time() - start))
+    #    df.columns = cols
+    #    for idx in list(set(df.groupby('ITEMID').size().index)):
+    #        events[idx] += df.groupby('ITEMID').size()[idx]
+            
+    #sorted_events = sorted(events.items(), key = lambda x: x[1], reverse = True)
+    #lst = []
+    #for i in sorted_events:
+    #    lst.append([i[0], items[items.ITEMID==i[0]].LABEL.values[0], i[1]])
     
     ####Make Sentences####    
+    ref = cohort[['HADM_ID', 'INTIME', 'OUTTIME']]
+    ref = ref.drop_duplicates(subset = 'HADM_ID', keep = 'first')
+    cols = list(pd.read_csv(filename, nrows=0).columns)
     start = time.time(); count = 0
     for df in pd.read_csv(filename, iterator = True, chunksize = chunksize):
         count+=1
         print ("Chunk: {0}, {1}".format(df.shape[0]*count, time.time() - start))
 
         df.columns = cols
-        df = df[(df.ERROR ==0) & (df.HADM_ID.isin(hadm)) & (df.ITEMID.isin(vocab))][['SUBJECT_ID', 'HADM_ID', 'ITEMID', 'CHARTTIME', 'VALUENUM']]
-        df['TIME'] = df['CHARTTIME'].values.astype('<M8[h]')
+        df = df[(df.ERROR ==0) & (df.HADM_ID.isin(hadm)) & (df.ITEMID.isin(vocab))][['HADM_ID', 'ITEMID', 'CHARTTIME', 'VALUENUM']]
         
-        temp = pd.DataFrame({'sum': df.groupby(['HADM_ID','TIME', 'ITEMID'])['VALUENUM'].sum(), 'count': df.groupby(['HADM_ID', 'TIME', 'ITEMID'])['VALUENUM'].size()}).reset_index()
-        dct = temp.to_dict(orient='split')['data']
+        #average by hour
+        df = pd.merge(ref, df, how = 'inner', on = ['HADM_ID'])        
+        df['TIME'] = df['CHARTTIME'].astype('<M8[ns]') - df['INTIME']
+        df['TIME'] = df['TIME'] / pd.Timedelta('1 hour')
+        df['TIME'] = df['TIME'].round()
+        #df['TIME'] = df['CHARTTIME'].values.astype('<M8[h]')
+        
+        df = pd.DataFrame({'sum': df.groupby(['HADM_ID','TIME', 'ITEMID'])['VALUENUM'].sum(), 'count': df.groupby(['HADM_ID', 'TIME', 'ITEMID'])['VALUENUM'].size()}).reset_index()
+        dct = df.to_dict(orient='split')['data']
         for d in dct:
             if d[1] not in charts[d[0]].keys():
                 charts[d[0]][d[1]] = {dictionary[d[2]]: [d[3], d[4]]}
@@ -293,15 +321,17 @@ def sentences (hadm, dictionary, filename):
             else:
                 charts[d[0]][d[1]][dictionary[d[2]]][0] += d[3]
                 charts[d[0]][d[1]][dictionary[d[2]]][1] += d[4]
-        del dct; del temp
+        del dct
     
-    events = {}
-    for h in charts.keys():
-        events[h] = {}
-        for t in charts[h].keys():
-            events[h][t] = [None]*19
-            for k, v in charts[h][t].items():
-                events[h][t][k] = v[1]/v[0]
+    #dict of dict event format
+    #events = {}
+    #for h in charts.keys():
+    #    events[h] = {}
+    #    for t in charts[h].keys():
+    #        events[h][t] = [None]*19
+    #        for k, v in charts[h][t].items():
+    #            events[h][t][k] = v[1]/v[0]
+    
     events = {}
     for h in charts.keys():
         events[h] = []
@@ -313,82 +343,53 @@ def sentences (hadm, dictionary, filename):
     
     temp = {}
     for h in list(events.keys()):
-        if len(events[h]) <12: pass
-        else: temp[h] = events[h][0:6] + events[h][-6:]         
+        if len(events[h]) <24: pass
+        else: 
+            temp[h] = sorted(events[h], key = lambda x: x[0])[0:12] + sorted(events[h], key = lambda x: x[0])[-12:]
+            temp[h] = [x[1] for x in temp[h]]
             
+    df = pd.DataFrame(temp)
+    df = df.transpose()
+    df.columns = ['t' + str(i) for i in range(1,25)]
+    df.index.name = 'HADM_ID'
+    
+    #make X
+    X = {}
+    imp = Imputer()
+    for h in list(df.index):
+        x = df[df.index == h].values.tolist()[0]
+        avg = np.nanmean(np.array(x), axis=0)
+        indices = [i[0] for i in np.argwhere(np.isnan(avg))]
+        x[0] = [(lambda i: ref_ranges[i])(i) if i in indices else x[0][i] for i in range(len(x[0]))]
+        x_new = imp.fit_transform(x)
+        X[h] = x_new
+        
         #temp = list(df[df.ITEMID.isin(vocab)][['ITEMID', 'VALUENUM']].values.tolist())
         #for item in temp:
         #    l_total[item[0]].append(item[1])
                       
         #make sentences for target patients
-        temp = df[(df.HADM_ID.isin(hadm)) & (df.ITEMID.isin(vocab))]
-        admissions = list(set(temp.HADM_ID.dropna()))
-        for a in admissions:
-            tmp = sorted(list(temp[temp.HADM_ID==a][['ITEMID', 'VALUENUM', 'CHARTTIME']].values.tolist()), key = lambda x: x[2])
-            for item in tmp:
-                q = quints[labs[item[0]]]
-                if item[1] <= q[1]: string = '_1'
-                elif q[1] < item[1] <= q[2]: string = '_2'
-                elif q[2]<item[1] <=q[3]: string = '_3'
-                elif q[3] <item[1]<=q[4]: string = '_4'
-                elif item[1] > q[4]: string = '_5'
-                else: print(item[1])
-                sentences[a].append([str(item[0]) + string, item[2]])
+        #temp = df[(df.HADM_ID.isin(hadm)) & (df.ITEMID.isin(vocab))]
+        #admissions = list(set(temp.HADM_ID.dropna()))
+        #for a in admissions:
+        #    tmp = sorted(list(temp[temp.HADM_ID==a][['ITEMID', 'VALUENUM', 'CHARTTIME']].values.tolist()), key = lambda x: x[2])
+        #    for item in tmp:
+        #        q = quints[labs[item[0]]]
+        #        if item[1] <= q[1]: string = '_1'
+        #        elif q[1] < item[1] <= q[2]: string = '_2'
+        #        elif q[2]<item[1] <=q[3]: string = '_3'
+        #        elif q[3] <item[1]<=q[4]: string = '_4'
+        #        elif item[1] > q[4]: string = '_5'
+        #        else: print(item[1])
+        #        sentences[a].append([str(item[0]) + string, item[2]])
                 #if item[1]>=0: l_sentences[a].append(item)
     
-    counts = []
-    for h in hadm: 
-        counts.append(len(sentences[h]))
-    print ("average sentence length: {0}".format(np.mean(counts)))  #216.4 events per hadm
+    #counts = []
+    #for h in hadm: 
+    #    counts.append(len(sentences[h]))
+    #print ("average sentence length: {0}".format(np.mean(counts)))  #216.4 events per hadm
     
-    return (sentences)
-    
-def pairwise(iterable):
-    "s -> (s0,s1), (s1,s2), (s2, s3), ..."
-    a, b = tee(iterable)
-    next(b, None)
-    return zip(a, b)
-    
-def pos_neg_split(subj, admits, HADM):
-    count = 0
-    neg = []; pos = []
-    for s in subj:
-        plus = []
-        minus=[]
-        count+=1; print (count)
-        hadm = list(set(admits[admits['SUBJECT_ID']==s].HADM_ID.values))
-        if len(hadm) <1: 
-            pass
-        else:   
-            t = [(pd.to_datetime(admits[admits['HADM_ID']==i]['ADMITTIME'].values[0]), i) for i in hadm]
-            #dt = [(pd.to_datetime(admits[admits['HADM_ID']==i]['DISCHTIME'].values[0]), i) for i in hadm]
-            t = sorted(t, reverse = True)
-            dt = {}
-            for i in hadm:
-                dt[i] = pd.to_datetime(admits[admits['HADM_ID']==i]['DISCHTIME'].values[0])
-            for t2,t1 in pairwise(iterable = t):
-                if (t2[0]-dt[t1[1]]).days<=30:
-                    plus.append((s, t1[1], 1))
-                elif (t1[1] in HADM):
-                    minus.append((s, t1[1], 0))
-            #    if (t2[0] - t1[0]).days >30:
-            #        minus.append((s, t1[0], t1[1], 0))
-            #    else:
-            #        plus.append((s, t1[0], t1[1], 1))
-            if len(plus) >0:
-                for k in plus:
-                    if k[1] in HADM:
-                        pos.append(plus[0])
-            elif len(minus)>0:
-                if t[0][1] in HADM:
-                    neg.append((s, t[0][1], 0))
-                else:
-                    neg.append(minus[0])
-            elif len(hadm)<2:
-                #if hadm[0] in HADM:
-                #    neg.append((s, hadm[0], 0))
-                pass
-    return (pos, neg)
+    return (X)
 
 def demographics (subj, HADM):
     demo = {}    
@@ -509,4 +510,50 @@ SCRATCH WORK
     #3. ICU >24hrs
     stays = list(set(icustays[(icustays.SUBJECT_ID.isin(adults)) & (icustays.LOS>=1.0)].SUBJECT_ID))
 
+def pairwise(iterable):
+    "s -> (s0,s1), (s1,s2), (s2, s3), ..."
+    a, b = tee(iterable)
+    next(b, None)
+    return zip(a, b)
+    
+def pos_neg_split(subj, admits, HADM):
+    count = 0
+    neg = []; pos = []
+    for s in subj:
+        plus = []
+        minus=[]
+        count+=1; print (count)
+        hadm = list(set(admits[admits['SUBJECT_ID']==s].HADM_ID.values))
+        if len(hadm) <1: 
+            pass
+        else:   
+            t = [(pd.to_datetime(admits[admits['HADM_ID']==i]['ADMITTIME'].values[0]), i) for i in hadm]
+            #dt = [(pd.to_datetime(admits[admits['HADM_ID']==i]['DISCHTIME'].values[0]), i) for i in hadm]
+            t = sorted(t, reverse = True)
+            dt = {}
+            for i in hadm:
+                dt[i] = pd.to_datetime(admits[admits['HADM_ID']==i]['DISCHTIME'].values[0])
+            for t2,t1 in pairwise(iterable = t):
+                if (t2[0]-dt[t1[1]]).days<=30:
+                    plus.append((s, t1[1], 1))
+                elif (t1[1] in HADM):
+                    minus.append((s, t1[1], 0))
+            #    if (t2[0] - t1[0]).days >30:
+            #        minus.append((s, t1[0], t1[1], 0))
+            #    else:
+            #        plus.append((s, t1[0], t1[1], 1))
+            if len(plus) >0:
+                for k in plus:
+                    if k[1] in HADM:
+                        pos.append(plus[0])
+            elif len(minus)>0:
+                if t[0][1] in HADM:
+                    neg.append((s, t[0][1], 0))
+                else:
+                    neg.append(minus[0])
+            elif len(hadm)<2:
+                #if hadm[0] in HADM:
+                #    neg.append((s, hadm[0], 0))
+                pass
+    return (pos, neg)
 '''
