@@ -277,18 +277,45 @@ def onehot(dix):
         onehot.append(tmp)
 
     
+def str2bool(v):
+    return v.lower() in ("True", "true", "yes", "Yes", 't', 'T', '1', 'YES', 'Y', 'y')
+    
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('x_file')
-    parser.add_argument('y_file')
-    parser.add_argument('option')
-    args = parser.parse_args()
+    xs = []; dxs = []; maxlens = []
+    
+    parser = argparse.ArgumentParser("Input X, Y, and settings.")
+    parser.add_argument('--x', type = str, action = 'append', help = "Enter X's.")
+    parser.add_argument('--x_name', type = str, action = 'append', help = "Enter X names.")
+    parser.add_argument('--dx', action = 'append', default = None, help = "Enter Auxiliary Inputs.")
+    parser.add_argument('--y', type = str, help = 'Enter task w/ labels Y.')
+    parser.add_argument('--w2v', type = str2bool, action = 'append', help = "Do you want word2vec embeddings on input?")
+    parser.add_argument('--maxlen', default =None, action = 'append', help = "Enter Padding length.")
+    parser.add_argument('--multi', action = 'store_true', help = "Multilabel classification?")
+    parser.add_argument('--mode', choices = ['lstm', 'hierarchal_lstm', 'cnn', 'hierarchal_cnn'])
+    parser.add_argument('--epochs', type = int, default = 30, help = "Enter number of epochs to train model on.")
+    parser.add_argument('--o', help = "Enter Output File name.")
+    args = parser.parse_args("--x /home/andy/Desktop/MIMIC/vars/npy/seqs/Xts.npy --x /home/andy/Desktop/MIMIC/vars/npy/seqs/dix.npy --x /home/andy/Desktop/MIMIC/vars/npy/seqs/sentences.npy --x_name 19ts --x_name w2v --x_name sentences --y /home/andy/Desktop/MIMIC/vars/npy/Ys/Yr.npy --w2v False --w2v True --w2v True --maxlen None --maxlen 39 --maxlen 1000 --multi --mode lstm".split())
+    #args = parser.parse_args()
 
-    if args.option == 0: 
-        task = 'binary'
-    else:
-        task = 'multiple'
-    x = np.load(args.x_file)
-    y = np.load(args.y_file)    
-    main(x, y, task)
-
+    for x_file in args.x:
+        x = np.load(x_file)
+        xs.append(x)
+        
+    try:
+        for dx_file in args.dx:
+            dx = np.load(dx_file)
+            dxs.append(dx)
+    except: dxs = None
+    
+    for m in args.maxlen:
+        try: maxlens.append(int(m))
+        except: maxlens.append(None)
+        
+    y = np.load(args.y)    
+    
+    data = main(xs = xs, x_names = args.x_name, dxs = dxs, y= y, w2vs = args.w2v, maxlens = maxlens, multi = args.multi, mode = args.mode, epochs = args.epochs)
+    
+    df = pd.DataFrame(data)
+    df = df.transpose()
+    df.index.name = 'KFOLD'
+    df.to_pickle(args.o)
