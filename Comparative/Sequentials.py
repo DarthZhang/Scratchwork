@@ -43,31 +43,28 @@ from keras.regularizers import l1, l2
 from keras.preprocessing import sequence
 from keras import metrics
 
-x_file = ''
-y_file = ''
-
-def main(xs, dxs, y, task):
+def main(xs, x_names, dxs, y, w2vs, maxlens, multi, mode, epochs):
     
-    epochs = 30
+    #epochs = 30
     #x_names = ['19ts', 'w2v', 'sentences']
-    x_names = ['19ts_w2v', '19ts_icd9']
+    #x_names = ['19ts_w2v', '19ts_icd9']
     #dxs = [None, None, None]
     #dxs = [w2v, onehot]
     #w2vs = [False, True, True]
-    w2v = False
-    multi = False
-    mode = 'hierarchal_lstm'
+    #w2v = False
+    #multi = False
+    #mode = 'hierarchal_lstm'
     #maxlens = [None, 39, 1000]
-    maxlen = None
+    #maxlen = None
     
     data  = {}   
     
-    for xi in range(len(dxs)):
+    for xi in range(len(xs)):
         x_name = x_names[xi]
-        #x = xs[xi]
+        x = xs[xi]
         dx = dxs[xi]
-        #maxlen = maxlens[xi]
-        #w2v = w2vs[xi]
+        maxlen = maxlens[xi]
+        w2v = w2vs[xi]
         
         if w2v:
             x = [[i+1 for i in d] for d in x]
@@ -434,7 +431,7 @@ def hierarchal_lstm (input_shape, embed_shape, stateful= False, target_rep = Fal
     dx = Input(shape = embed_shape, name = 'dx')
 
     xx = concatenate([xx, dx])
-    #xx = Dense(256, activation = 'relu') (xx)
+    xx = Dense(256, activation = 'relu') (xx)
     if multi:
         y = Dense(25, activation = 'sigmoid') (xx)
     else:
@@ -442,18 +439,46 @@ def hierarchal_lstm (input_shape, embed_shape, stateful= False, target_rep = Fal
     model = Model(inputs = [x, dx], outputs = [y])
     model.compile (loss = 'binary_crossentropy', optimizer = Adam(lr = 1e-4), metrics = ['accuracy'])
     return (model)
+
+def str2bool(v):
+    return v.lower() in ("True", "true", "yes", "Yes", 't', 'T', '1', 'YES', 'Y', 'y')
     
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('x_file')
-    parser.add_argument('y_file')
-    parser.add_argument('option')
+    xs = []; dxs = []; maxlens = []
+    
+    parser = argparse.ArgumentParser("Input X, Y, and settings.")
+    parser.add_argument('--x', type = str, action = 'append', help = "Enter X's.")
+    parser.add_argument('--x_name', type = str, action = 'append', help = "Enter X names.")
+    parser.add_argument('--dx', action = 'append', default = None, help = "Enter Auxiliary Inputs.")
+    parser.add_argument('--y', type = str, help = 'Enter task w/ labels Y.')
+    parser.add_argument('--w2v', type = str2bool, action = 'append', help = "Do you want word2vec embeddings on input?")
+    parser.add_argument('--maxlen', default =None, action = 'append', help = "Enter Padding length.")
+    parser.add_argument('--multi', action = 'store_true', help = "Multilabel classification?")
+    parser.add_argument('--mode', choices = ['lstm', 'hierarchal_lstm', 'cnn', 'hierarchal_cnn'])
+    parser.add_argument('--epochs', type = int, default = 30, help = "Enter number of epochs to train model on.")
+    parser.add_argument('--o', help = "Enter Output File name.")
+    #args = parser.parse_args("--x /home/andy/Desktop/MIMIC/vars/npy/seqs/Xts.npy --x /home/andy/Desktop/MIMIC/vars/npy/seqs/dix.npy --x /home/andy/Desktop/MIMIC/vars/npy/seqs/sentences.npy --x_name 19ts --x_name w2v --x_name sentences --y /home/andy/Desktop/MIMIC/vars/npy/Ys/Yr.npy --w2v False --w2v True --w2v True --maxlen None --maxlen 39 --maxlen 1000 --multi --mode lstm --o /home/andy/Desktop/MIMIC/dat/LSTM results/readm.pkl".split())
     args = parser.parse_args()
 
-    if args.option == 0: 
-        task = 'binary'
-    else:
-        task = 'multiple'
-    x = np.load(args.x_file)
-    y = np.load(args.y_file)    
-    main(x, y, task)
+    for x_file in args.x:
+        x = np.load(x_file)
+        xs.append(x)
+        
+    try:
+        for dx_file in args.dx:
+            dx = np.load(dx_file)
+            dxs.append(dx)
+    except: dxs = None
+    
+    for m in args.maxlen:
+        try: maxlens.append(int(m))
+        except: maxlens.append(None)
+        
+    y = np.load(args.y)    
+    
+    data = main(xs = xs, x_names = args.x_name, dxs = dxs, y= y, w2vs = args.w2v, maxlens = maxlens, multi = args.multi, mode = args.mode, epochs = args.epochs)
+    
+    df = pd.DataFrame(data)
+    df.index.name = 'KFOLD'
+    df.to_pickle(args.o)
+
