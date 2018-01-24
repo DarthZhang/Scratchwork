@@ -1,0 +1,23 @@
+%!TEX root = main.tex
+
+We evaluate our dialogue system on the binary classification task of identifying mild cognitive impairment (MCI) 
+among clinical patients. This was doneusing utterance data from provider-patient interviews.
+Data was obtained from a randomized controlled behavioral clinical trial conducted at Oregon Health & Sciences University (OHSU) 
+to ascertain the effect of unstructured conversation on Alzheimer Disease progression (ClinicalTrials.gov: NCT01571427). 
+Conversations are in interviewer-patient, Q&A format. 
+The patient responses are unstructured while interviewer questions range over preset question topics. 
+There are 14 positive labels (MCI) and 27 negative labels (NL) for the prediction task. 
+Figure 2 shows a schematic diagram of our experimental design.
+
+
+\subsection { Results of Baseline Predictions }
+Table 1 shows the performance of various classifiers using averaged skip-thought vector embeddings per patient. 
+As a reference, performance using raw word count distributions is also included. 
+Similar to Dodge et al., linear SVM with l1-norm penalty achieved the highest performance with 
+80.0% AUC over 10-fold validation. 
+
+
+\subsection { Evaluation of User Simulators }
+\subsection { Top-Performing RL-Agents }
+\subsection { Performance of Classifiers on Agent-Generated Dialogue}
+
