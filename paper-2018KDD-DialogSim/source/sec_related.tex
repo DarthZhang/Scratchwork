@@ -1,0 +1,26 @@
+%!TEX root = main.tex
+
+Chit-chat dialogue modeling typically involves end-to-end sequential neural network approaches. 
+Because there is no task-orientation, chit-chat generation is often treated as a many-to-many, 
+input-to-output learning task from the machine learning perspective. 
+On the other hand, task-oriented dialogue modeling typically involve several key components: 
+(1) natural language understanding (NLU), (2) dialogue management (DM), and 
+(3) natural language generation. 
+Classically, each component is trained with supervised learning with hand-crafted, rule-based responses. 
+However, such systems demonstrated poor adaptability to different contexts and user predilections. 
+Recently, reinforcement learning provided a viable alternative to rule-based formulations, 
+as an unified policy network can be trained across various users to gauge the performance of dialogue 
+generation for the task at hand. 
+However, this method also requires user-simulator to be implemented to capture the variability among users.
+
+
+Currently, advances in deep-learning techniques have produced a rise in the popularity of end-to-end training systems.
+These systems typically bypass the need to develop carefully calibrated reward functions in the reinforcement learning case. 
+However, such pipelines are limited by the vast amounts of data needed for training. 
+In our work, we utilize a mix of various techniques from chit-chat modeling 
+as well as task-oriented dialogue systems to aid in off-conversational task. 
+We also introduce a formulation of training environment in the 
+reinforcement learning module that is flexible to different user simulators, 
+off-conversation prediction models and different modes of training the reinforcement agent 
+(e.g., training to generate new dialogues vs. training to improve policy on current dialogues).
+
