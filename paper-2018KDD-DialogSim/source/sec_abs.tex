@@ -1,0 +1,17 @@
+%!TEX root = main.tex
+
+Dialogue modeling is classically used to generate task-oriented responses to user 
+query or to generate open-domain conversations with user. In this paper, we train a human-agent dialogue systems 
+by observing only human-human responses in conversations. We show how such a dialogue system can be used for 
+data augmentation and performance improvement in off-conversation prediction tasks. 
+We propose a framework which contains 4 main components: (1) skip-thought embedding of response utterances, 
+(2) training customized user-simulator for each subject, 
+(3) training a reinforcement learning agent to learn a unified action-value function for 
+query-answer responses for the task of interest, and 
+(4) using trained agents to generate new dialogue episodes for data augmentation and prediction. 
+We evaluate the performance of this framework on classification of mild-cognitive impairment 
+(MCI) with utterance data from 41 OHSU patients. 
+Our methods achieved 78.6% AUC on 5-fold validation with our current framework, 
+an improvement over a previous benchmark study (72.5% AUC with sparse SVM). 
+Additionally, our agent learned individualized policies for producing query 
+sequences which can minimize the number of turns required to make accurate diagnostic predictions.
