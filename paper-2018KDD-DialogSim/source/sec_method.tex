@@ -1,0 +1,132 @@
+%!TEX root = main.tex
+
+In the following section, we present the details of each component of the dialogue system. 
+Figure 1 shows an overview of the components of our experimental pipeline. 
+We use a modular framework involving NLU, DM and NLG modules.
+We assume that each user corpus has the same format but do not assume that topics are conserved across conversations.
+
+\begin{figure}{t!}
+\centering
+\includegraphics{width=0.48\textwidth}{fig/fig1.jpg}
+\caption{Overview of Dialogue System Pipeline.}
+\label{fig:fig1}
+\end{figure}
+
+For each user, the corpus is tokenized into turn-based responses to questions. 
+The responses are embedded into skip-thought vectors by pretrained encoder from the BookCorpus dataset. 
+Questions from interviewers are categorized and encoded into one-hot vectors. 
+Each question-response pair is stored and used to train a user simulator for the user via multi-layer perceptron. 
+Responses from users are also used to train a classifier for off-line prediction task. 
+The classifier and user simulator then get inputted into Environment to train reinforcement learning agent (RL-agent) 
+for dialogue generation with the reward function altering between data augmentation and turn minimization modes. 
+This process is iterated through all the training set users. 
+The RL-agent learns a unified Q-value function for the prediction task based on a variety of conversations.
+
+
+\subsection{ Skip-Thought Embeddings }
+To effectively capture contextual representation of user conversation style, 
+we utilize vector embedding of user corpus at the sentence-level representation. 
+Given that we want to capture the flow of the conversation from one response to the next,
+we implement skip-thought embedding given that it has shown effectiveness over large corporal 
+datasets by capturing contextual information of sentences given neighboring ones. 
+For encoding sentences, we use a pretrained model for encoding sentences on the BookCorpus dataset, 
+which contained turn-based conversations from various books. 
+For the decoder, we train skip-thought vectors to recover the original response of the user during NLG portion of the pipeline.
+
+
+\subsection{ Baseline Classifiers }
+We compare the performance of several baseline classifiers for the off-conversation prediction task. 
+For our specific dataset, Dodge et al. had previously shown benchmark performance of 
+72.5% AUC score on 5-fold validation while using linear SVM with l1-norm penalty 
+and feature engineering by Linguistic Inquiry and Word Count (LIWC) software. 
+For our study, we used vector-averaged skip-thought embeddings for each user as features. 
+We also use linear SVM classifier with l1-norm penalty for training and prediction.
+
+
+\subsection{ User-Simulator Design }
+Since each user has individual response styles to questions, 
+we train a personalized user-simulator for each user. For each user, 
+the conversation corpus is divided into question-response turns. 
+In our dataset, for example, the number of turns per conversation ranged from 30-275 turns. 
+For training, we used a multilayer perceptron with 2 hidden layers of 512 output nodes each. 
+Regularization with 0.001 l2-norm penalty is introduced at the final output layer. 
+Because our dataset utilize preset questions by the interviewer, we use one-hot encoding of questions as input for training. 
+In the case where questions are not preset, 
+more state-of-art methods such as end-to-end recurrent neural network systems can be deployed to train the user simulator 
+instead. To evaluate the performance of our user simulator, 
+we computed the cosine-similarity on the outputs of the user simulator and the original thought vector representation 
+of the user response for each turn.
+
+{ Environment Design }
+During each interaction between the RL-agent and the Environment, 
+the agent produces a question to the environment, and 
+the environment produces a response to the agent consistent of a reward, an observation, 
+the turn count and a boolean indicating whether their conversation has ended. 
+The agent then uses this information to learn a better set of actions to ask the environment 
+to maximize future reward signals. 
+Our Environment used for reinforcement learning consists of the following key components: 
+(1) observation-generating function, 
+(2) dynamic reward function, (3) policy-masking, and (4) slots for user-simulators and task-specific classifier. 
+
+
+\noindent \textbf{ Observation-generating function.} The observation-generating function outputs a 
+concatenated vector $o_t \in \mathbb{R}^{|2C|}$ consisting of the skip-thought vector 
+output $s_t \in \mathbb{R}^{|C|}$ from the user simulator and a moving average of skip-thought vectors obtained 
+from the current and previous turns. 
+
+
+\noindent \textbf{ Dynamic reward function. } At each turn, the Environment outputs to the agent a scalar reward $r$, 
+which varies depending on the internal state of the Environment. 
+If the conversational episode is not done, our Environment produces a constant negative scalar (e.g., -10) 
+for each passing turn. This penalty creates incentive for agent to minimize the number of questions needed 
+for the prediction task.
+
+
+On the other hand, if the agent produces an action which ends a conversation (e.g., “goodbye”),
+then the Environment uses the existing classifier to make a prediction using the averaged skip-thought vector 
+for the off-conversation task. If the prediction is successful, the agent receives a highly positive reward (e.g., +5000), 
+and if unsuccessful, the agent receives a moderately negative reward (e.g., -1000). 
+We also set a cap (e.g., 100 max turns) on the number of turns per conversation to prevent 
+the agent from dragging on conversations to avoid prediction penalty. 
+
+
+\noindent \textbf{ Policy-masking. } One challenge in our problem is creating an environment that can 
+train the agent to produce responses which best aligns with the flow of conversations. 
+For example, an agent may learn that the question \textit{“...can you elaborate on that?”} is useful 
+in generating a wide distribution of sentences from the user, but it would not make sense to include 
+that in the first sentence of a conversation, or before topics are introduced. 
+Furthermore, the Environment should ideally recognize that more private subject matters such as 
+occupation and social views may be occur later in a conversation and respond to the agent accordingly.
+
+
+To achieve this, we implemented policy-masking over the agent’s actions based on the turn count. 
+A lookup table is generated before training procedures to includes questions asked by all users by turn. 
+At each turn during training, if the agent’s policy ranges outside of the questions by all previous users at that turn, 
+then a negative reward penalty is incurred for that turn.
+
+
+\noindent \textbf{ User-simulator Slots. } Each user “inserts” their user simulator 
+into the environment to be used for response generation during simulations. 
+This allows for the generation of multiple environments for parallel RL-agent training on multiple users at a time.
+
+
+\subsection{ Agent Design }
+We design the internal state representation of the agent to include a concatenated vector of 
+the observation vector obtained from the environment, the turn count and a confidence 
+value of the classifier as it produces a prediction on the averaged skip-thought vector from the observation. 
+The confidence value of the SVM classifier is the signed distance of the projected data point from the 
+decision boundary hyperplane. We use Q-learning with experience replay using memory from 500,000 
+most recent turns to learn the action-value function. 
+
+
+
+\subsection{ Data Augmentation }
+One training challenge facing the RL-agent is learning the action-value function is 
+when the classifier misses the prediction, resulting in penalty instead of reward. 
+We deal with this issue by first pre-training the RL-agent Q-value function on fixed actions of the corpus 
+which result in successful prediction episodes. In this procedure, we only include users where the classifier 
+performed correctly in the off-conversation task. Once pretrained, 
+the RL-agent generates new dialogue episodes from its current policy. 
+The highest scoring episodes are then used as data-augmentation to re-train the classifier. 
+
+
